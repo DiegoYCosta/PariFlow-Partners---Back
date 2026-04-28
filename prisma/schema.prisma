@@ -1,0 +1,414 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserSystemStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum AccessProfileCode {
+  ADMIN
+  EXECUTIVE
+  LEGAL
+  HR
+  OPERATIONS
+}
+
+enum EmploymentLinkStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISMISSED
+  BLOCKED
+}
+
+enum OccurrenceNature {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum OccurrenceVisibility {
+  INTERNAL
+  SENSITIVE
+  CRITICAL
+}
+
+enum AttachmentStatus {
+  ACTIVE
+  DELETED
+}
+
+enum RefreshTokenStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+  EXPIRED
+}
+
+enum SensitiveSessionLevel {
+  SENSITIVE
+  CRITICAL
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  SESSION_EXCHANGED
+  REFRESH_ROTATED
+  SENSITIVE_SESSION_STARTED
+  SENSITIVE_SESSION_VERIFIED
+  ACCESS_DENIED
+}
+
+model UserSystem {
+  id              BigInt              @id @default(autoincrement())
+  publicId        String              @unique @db.VarChar(26)
+  firebaseUid     String?             @unique @db.VarChar(128)
+  name            String              @db.VarChar(160)
+  email           String              @unique @db.VarChar(180)
+  status          UserSystemStatus    @default(ACTIVE)
+  mfaEnabled      Boolean             @default(false)
+  lastAccessAt    DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  accessProfiles  UserAccessProfile[]
+  refreshTokens   RefreshToken[]
+  securityEvents  SecurityEvent[]
+  sensitiveAccess SensitiveSession[]
+  auditLogs       AuditLog[]
+
+  @@map("usuario_sistema")
+}
+
+model AccessProfile {
+  id               BigInt              @id @default(autoincrement())
+  publicId         String              @unique @db.VarChar(26)
+  code             AccessProfileCode   @unique
+  name             String              @db.VarChar(120)
+  description      String?             @db.VarChar(255)
+  canViewSensitive Boolean             @default(false)
+  canDownload      Boolean             @default(false)
+  canSoftDelete    Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  users            UserAccessProfile[]
+
+  @@map("perfil_acesso")
+}
+
+model UserAccessProfile {
+  id              BigInt        @id @default(autoincrement())
+  userSystemId    BigInt
+  accessProfileId BigInt
+  createdAt       DateTime      @default(now())
+  userSystem      UserSystem    @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+  accessProfile   AccessProfile @relation(fields: [accessProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([userSystemId, accessProfileId])
+  @@map("usuario_perfil_acesso")
+}
+
+model ProviderCompany {
+  id           BigInt           @id @default(autoincrement())
+  publicId     String           @unique @db.VarChar(26)
+  legalName    String           @db.VarChar(180)
+  tradeName    String?          @db.VarChar(180)
+  document     String           @unique @db.VarChar(20)
+  status       String           @db.VarChar(30)
+  contactsJson Json?
+  notes        String?          @db.Text
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  contracts    Contract[]
+  links        EmploymentLink[]
+  occurrences  Occurrence[]
+
+  @@map("empresa_prestadora")
+}
+
+model ClientCompany {
+  id          BigInt     @id @default(autoincrement())
+  publicId    String     @unique @db.VarChar(26)
+  name        String     @db.VarChar(180)
+  document    String?    @db.VarChar(20)
+  clientType  String     @db.VarChar(60)
+  addressJson Json?
+  contactName String?    @db.VarChar(160)
+  status      String     @db.VarChar(30)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  contracts   Contract[]
+
+  @@map("cliente_contratante")
+}
+
+model Contract {
+  id                BigInt           @id @default(autoincrement())
+  publicId          String           @unique @db.VarChar(26)
+  providerCompanyId BigInt
+  clientCompanyId   BigInt
+  startsAt          DateTime
+  endsAt            DateTime?
+  status            String           @db.VarChar(30)
+  notes             String?          @db.Text
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  providerCompany   ProviderCompany  @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  clientCompany     ClientCompany    @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  positions         Position[]
+  links             EmploymentLink[]
+
+  @@map("contrato")
+}
+
+model ServiceCatalog {
+  id          BigInt     @id @default(autoincrement())
+  publicId    String     @unique @db.VarChar(26)
+  name        String     @db.VarChar(120)
+  category    String?    @db.VarChar(80)
+  description String?    @db.Text
+  isActive    Boolean    @default(true)
+  positions   Position[]
+
+  @@map("servico")
+}
+
+model Position {
+  id           BigInt           @id @default(autoincrement())
+  publicId     String           @unique @db.VarChar(26)
+  contractId   BigInt
+  serviceId    BigInt
+  name         String           @db.VarChar(160)
+  location     String?          @db.VarChar(180)
+  shift        String?          @db.VarChar(120)
+  schedule     String?          @db.VarChar(120)
+  requirements String?          @db.Text
+  status       String           @db.VarChar(30)
+  contract     Contract         @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  service      ServiceCatalog   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  links        EmploymentLink[]
+  occurrences  Occurrence[]
+
+  @@map("posto_ou_vaga")
+}
+
+model Person {
+  id            BigInt           @id @default(autoincrement())
+  publicId      String           @unique @db.VarChar(26)
+  name          String           @db.VarChar(160)
+  cpf           String?          @unique @db.VarChar(14)
+  rg            String?          @db.VarChar(30)
+  email         String?          @db.VarChar(180)
+  phone         String?          @db.VarChar(30)
+  birthDate     DateTime?
+  addressJson   Json?
+  notes         String?          @db.Text
+  externalWorks ExternalWork[]
+  links         EmploymentLink[]
+  occurrences   Occurrence[]
+
+  @@map("pessoa")
+}
+
+model ExternalWork {
+  id          BigInt    @id @default(autoincrement())
+  publicId    String    @unique @db.VarChar(26)
+  personId    BigInt
+  companyName String    @db.VarChar(180)
+  roleName    String?   @db.VarChar(120)
+  schedule    String?   @db.VarChar(120)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  status      String?   @db.VarChar(30)
+  notes       String?   @db.Text
+  person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@map("trabalho_externo")
+}
+
+model EmploymentLink {
+  id                BigInt               @id @default(autoincrement())
+  publicId          String               @unique @db.VarChar(26)
+  personId          BigInt
+  providerCompanyId BigInt
+  contractId        BigInt
+  positionId        BigInt
+  type              String               @db.VarChar(60)
+  status            EmploymentLinkStatus @default(PENDING)
+  startsAt          DateTime
+  endsAt            DateTime?
+  person            Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
+  providerCompany   ProviderCompany      @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  contract          Contract             @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  position          Position             @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  moves             EmploymentMove[]
+  dismissal         Dismissal?
+  occurrences       Occurrence[]
+
+  @@map("vinculo")
+}
+
+model EmploymentMove {
+  id               BigInt         @id @default(autoincrement())
+  publicId         String         @unique @db.VarChar(26)
+  employmentLinkId BigInt
+  moveType         String         @db.VarChar(60)
+  origin           String?        @db.VarChar(160)
+  destination      String?        @db.VarChar(160)
+  movedAt          DateTime
+  notes            String?        @db.Text
+  employmentLink   EmploymentLink @relation(fields: [employmentLinkId], references: [id], onDelete: Cascade)
+
+  @@map("movimentacao_vinculo")
+}
+
+model Dismissal {
+  id               BigInt         @id @default(autoincrement())
+  publicId         String         @unique @db.VarChar(26)
+  employmentLinkId BigInt         @unique
+  dismissedAt      DateTime
+  reason           String         @db.VarChar(180)
+  dismissalType    String?        @db.VarChar(60)
+  riskSummary      String?        @db.Text
+  pendingIssues    String?        @db.Text
+  legalNotes       String?        @db.Text
+  employmentLink   EmploymentLink @relation(fields: [employmentLinkId], references: [id], onDelete: Cascade)
+
+  @@map("desligamento")
+}
+
+model Occurrence {
+  id                   BigInt               @id @default(autoincrement())
+  publicId             String               @unique @db.VarChar(26)
+  personId             BigInt
+  providerCompanyId    BigInt?
+  employmentLinkId     BigInt?
+  positionId           BigInt?
+  type                 String               @db.VarChar(80)
+  scope                String               @db.VarChar(60)
+  nature               OccurrenceNature
+  title                String               @db.VarChar(160)
+  description          String               @db.Text
+  occurredAt           DateTime
+  severityLevel        String               @db.VarChar(40)
+  visibility           OccurrenceVisibility @default(INTERNAL)
+  showInExecutivePanel Boolean              @default(false)
+  status               String               @db.VarChar(30)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  person               Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
+  providerCompany      ProviderCompany?     @relation(fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  employmentLink       EmploymentLink?      @relation(fields: [employmentLinkId], references: [id], onDelete: SetNull)
+  position             Position?            @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  attachments          Attachment[]
+  receipts             DocumentReceipt[]
+
+  @@map("ocorrencia")
+}
+
+model Attachment {
+  id                   BigInt           @id @default(autoincrement())
+  publicId             String           @unique @db.VarChar(26)
+  occurrenceId         BigInt
+  displayScope         String           @db.VarChar(60)
+  fileName             String           @db.VarChar(180)
+  mimeType             String?          @db.VarChar(120)
+  storagePath          String?          @db.VarChar(255)
+  externalLink         String?          @db.VarChar(255)
+  physicalLocation     String?          @db.VarChar(255)
+  visibleInExecutive   Boolean          @default(false)
+  visibleInContext     Boolean          @default(true)
+  requiresConfirmation Boolean          @default(false)
+  version              Int              @default(1)
+  status               AttachmentStatus @default(ACTIVE)
+  deletedAt            DateTime?
+  deleteReason         String?          @db.VarChar(255)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  occurrence           Occurrence       @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+
+  @@map("anexo")
+}
+
+model DocumentReceipt {
+  id           BigInt     @id @default(autoincrement())
+  publicId     String     @unique @db.VarChar(26)
+  occurrenceId BigInt
+  receivedAt   DateTime
+  channel      String?    @db.VarChar(80)
+  receivedBy   String?    @db.VarChar(160)
+  notes        String?    @db.Text
+  occurrence   Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+
+  @@map("recebimento_documento")
+}
+
+model RefreshToken {
+  id           BigInt             @id @default(autoincrement())
+  publicId     String             @unique @db.VarChar(26)
+  userSystemId BigInt
+  tokenHash    String             @db.VarChar(255)
+  status       RefreshTokenStatus @default(ACTIVE)
+  expiresAt    DateTime
+  rotatedAt    DateTime?
+  revokedAt    DateTime?
+  ipAddress    String?            @db.VarChar(64)
+  userAgent    String?            @db.VarChar(255)
+  createdAt    DateTime           @default(now())
+  userSystem   UserSystem         @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model SensitiveSession {
+  id            BigInt                @id @default(autoincrement())
+  publicId      String                @unique @db.VarChar(26)
+  userSystemId  BigInt
+  level         SensitiveSessionLevel
+  justification String?               @db.Text
+  verifiedAt    DateTime
+  expiresAt     DateTime
+  ipAddress     String?               @db.VarChar(64)
+  userAgent     String?               @db.VarChar(255)
+  userSystem    UserSystem            @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+
+  @@map("sensitive_sessions")
+}
+
+model SecurityEvent {
+  id           BigInt            @id @default(autoincrement())
+  publicId     String            @unique @db.VarChar(26)
+  userSystemId BigInt?
+  eventType    SecurityEventType
+  description  String            @db.VarChar(255)
+  ipAddress    String?           @db.VarChar(64)
+  userAgent    String?           @db.VarChar(255)
+  createdAt    DateTime          @default(now())
+  userSystem   UserSystem?       @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+
+  @@map("security_events")
+}
+
+model AuditLog {
+  id             BigInt      @id @default(autoincrement())
+  publicId       String      @unique @db.VarChar(26)
+  userSystemId   BigInt?
+  entityName     String      @db.VarChar(80)
+  entityPublicId String?     @db.VarChar(26)
+  action         String      @db.VarChar(60)
+  description    String?     @db.Text
+  ipAddress      String?     @db.VarChar(64)
+  device         String?     @db.VarChar(255)
+  createdAt      DateTime    @default(now())
+  userSystem     UserSystem? @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+
+  @@map("log_auditoria")
+}

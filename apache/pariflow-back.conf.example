@@ -1,0 +1,31 @@
+<VirtualHost *:80>
+  ServerName painel.exemplo.com
+  Redirect permanent / https://painel.exemplo.com/
+</VirtualHost>
+
+<VirtualHost *:443>
+  ServerName painel.exemplo.com
+
+  SSLEngine on
+  SSLCertificateFile /etc/ssl/certs/painel.crt
+  SSLCertificateKeyFile /etc/ssl/private/painel.key
+
+  ProxyPreserveHost On
+  RequestHeader set X-Forwarded-Proto "https"
+  RequestHeader set X-Forwarded-Port "443"
+
+  ProxyPass /api http://127.0.0.1:3000/api
+  ProxyPassReverse /api http://127.0.0.1:3000/api
+
+  ProxyPass /health http://127.0.0.1:3000/health
+  ProxyPassReverse /health http://127.0.0.1:3000/health
+
+  DocumentRoot /var/www/pariflow-front
+
+  <Directory /var/www/pariflow-front>
+    Options Indexes FollowSymLinks
+    AllowOverride All
+    Require all granted
+    FallbackResource /index.html
+  </Directory>
+</VirtualHost>

@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+
+# Build and coverage output
+dist/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# Package manager and tool caches
+.turbo/
+.cache/
+.eslintcache
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Runtime files
+*.log
+logs/
+pids/
+*.pid
+*.pid.lock
+*.seed
+*.stackdump
+.pm2/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+!.env*.example
+.envrc
+firebase-adminsdk-*.json
+service-account*.json
+google-credentials*.json
+*.pem
+*.p12
+*.pfx
+
+# Local databases
+prisma/*.db
+prisma/*.db-*
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+uploads/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
