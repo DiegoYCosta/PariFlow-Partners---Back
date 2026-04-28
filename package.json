@@ -11,6 +11,8 @@
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
     "lint": "tsc --noEmit",
+    "db:local:setup": "powershell -ExecutionPolicy Bypass -File .\\scripts\\setup-local-mysql.ps1",
+    "db:local:stop": "powershell -ExecutionPolicy Bypass -File .\\scripts\\stop-local-mysql.ps1",
     "prisma:format": "prisma format",
     "prisma:generate": "prisma generate",
     "prisma:migrate:status": "prisma migrate status",

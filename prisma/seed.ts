@@ -219,7 +219,7 @@ async function main() {
       }
     });
 
-    await prisma.contract.upsert({
+    const contract = await prisma.contract.upsert({
       where: { publicId: 'ctr_seed_base' },
       update: {
         providerCompanyId: providerCompany.id,
@@ -237,6 +237,139 @@ async function main() {
         endsAt: null,
         status: 'ACTIVE',
         notes: 'Contrato de exemplo para desenvolvimento.'
+      }
+    });
+
+    const baseService = await prisma.serviceCatalog.findUniqueOrThrow({
+      where: { publicId: 'srv_portaria' }
+    });
+
+    const position = await prisma.position.upsert({
+      where: { publicId: 'pos_seed_base' },
+      update: {
+        contractId: contract.id,
+        serviceId: baseService.id,
+        name: 'Porteiro Diurno',
+        location: 'Portaria principal',
+        shift: 'DIURNO',
+        schedule: '12x36',
+        requirements: 'Controle de acesso e atendimento ao condominio.',
+        status: 'ACTIVE'
+      },
+      create: {
+        publicId: 'pos_seed_base',
+        contractId: contract.id,
+        serviceId: baseService.id,
+        name: 'Porteiro Diurno',
+        location: 'Portaria principal',
+        shift: 'DIURNO',
+        schedule: '12x36',
+        requirements: 'Controle de acesso e atendimento ao condominio.',
+        status: 'ACTIVE'
+      }
+    });
+
+    const person = await prisma.person.upsert({
+      where: { publicId: 'pes_seed_base' },
+      update: {
+        name: 'Carlos Eduardo Lima',
+        cpf: '12345678900',
+        rg: '44556677',
+        email: 'carlos.lima@pariflow.local',
+        phone: '(11) 98888-0000',
+        birthDate: new Date('1991-04-10T00:00:00.000Z'),
+        addressJson: {
+          city: 'Sao Paulo',
+          state: 'SP'
+        },
+        notes: 'Pessoa de exemplo para fluxo inicial de vinculos.'
+      },
+      create: {
+        publicId: 'pes_seed_base',
+        name: 'Carlos Eduardo Lima',
+        cpf: '12345678900',
+        rg: '44556677',
+        email: 'carlos.lima@pariflow.local',
+        phone: '(11) 98888-0000',
+        birthDate: new Date('1991-04-10T00:00:00.000Z'),
+        addressJson: {
+          city: 'Sao Paulo',
+          state: 'SP'
+        },
+        notes: 'Pessoa de exemplo para fluxo inicial de vinculos.'
+      }
+    });
+
+    await prisma.externalWork.upsert({
+      where: { publicId: 'tex_seed_base' },
+      update: {
+        personId: person.id,
+        companyName: 'Mercado Alpha',
+        roleName: 'Repositor',
+        schedule: '6x1',
+        startsAt: new Date('2025-01-15T00:00:00.000Z'),
+        endsAt: null,
+        status: 'ACTIVE',
+        notes: 'Trabalho externo informado no cadastro inicial.'
+      },
+      create: {
+        publicId: 'tex_seed_base',
+        personId: person.id,
+        companyName: 'Mercado Alpha',
+        roleName: 'Repositor',
+        schedule: '6x1',
+        startsAt: new Date('2025-01-15T00:00:00.000Z'),
+        endsAt: null,
+        status: 'ACTIVE',
+        notes: 'Trabalho externo informado no cadastro inicial.'
+      }
+    });
+
+    const employmentLink = await prisma.employmentLink.upsert({
+      where: { publicId: 'vin_seed_base' },
+      update: {
+        personId: person.id,
+        providerCompanyId: providerCompany.id,
+        contractId: contract.id,
+        positionId: position.id,
+        type: 'CLT',
+        status: 'ACTIVE',
+        startsAt: new Date('2026-02-01T00:00:00.000Z'),
+        endsAt: null
+      },
+      create: {
+        publicId: 'vin_seed_base',
+        personId: person.id,
+        providerCompanyId: providerCompany.id,
+        contractId: contract.id,
+        positionId: position.id,
+        type: 'CLT',
+        status: 'ACTIVE',
+        startsAt: new Date('2026-02-01T00:00:00.000Z'),
+        endsAt: null
+      }
+    });
+
+    // Esse vinculo base serve de ancora para ocorrencias, anexos e trilhas de
+    // historico quando esses modulos entrarem na proxima rodada.
+    await prisma.employmentMove.upsert({
+      where: { publicId: 'mov_seed_base' },
+      update: {
+        employmentLinkId: employmentLink.id,
+        moveType: 'ALOCACAO_INICIAL',
+        origin: 'Admissao',
+        destination: position.name,
+        movedAt: new Date('2026-02-01T08:00:00.000Z'),
+        notes: 'Movimentacao inicial do vinculo de exemplo.'
+      },
+      create: {
+        publicId: 'mov_seed_base',
+        employmentLinkId: employmentLink.id,
+        moveType: 'ALOCACAO_INICIAL',
+        origin: 'Admissao',
+        destination: position.name,
+        movedAt: new Date('2026-02-01T08:00:00.000Z'),
+        notes: 'Movimentacao inicial do vinculo de exemplo.'
       }
     });
   }

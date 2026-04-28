@@ -6,6 +6,7 @@ import {
 import { AccessProfileCode } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { ulid } from 'ulid';
+import { createPublicId } from '../../common/utils/public-id';
 import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { FirebaseAdminService } from '../../infra/firebase/firebase-admin.service';
@@ -160,7 +161,7 @@ export class AuthService {
         user: {
           publicId: identity.firebaseUid === 'firebase-dev-local'
             ? 'usr_dev_local'
-            : `usr_${ulid().toLowerCase()}`,
+            : createUserPublicId(),
           ...identity
         },
         profiles: localProfiles,
@@ -291,5 +292,5 @@ export class AuthService {
 }
 
 function createUserPublicId(): string {
-  return `usr_${ulid().toLowerCase()}`;
+  return createPublicId('usr');
 }

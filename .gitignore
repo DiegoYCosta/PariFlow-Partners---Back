@@ -34,6 +34,7 @@ pids/
 !.env.example
 !.env*.example
 .envrc
+.local/
 firebase-adminsdk-*.json
 service-account*.json
 google-credentials*.json

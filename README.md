@@ -20,6 +20,10 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 - `GET/POST /api/v1/empresas-prestadoras`
 - `GET/POST /api/v1/clientes`
 - `GET/POST /api/v1/contratos`
+- `GET/POST /api/v1/pessoas`
+- `GET/POST /api/v1/vinculos`
+- `POST /api/v1/vinculos/:publicId/movimentacoes`
+- `POST /api/v1/vinculos/:publicId/desligamento`
 - filtro global de erros no formato padrao da API
 - interceptor global que envelopa respostas com `traceId`
 - `PrismaService` global e schema Prisma inicial
@@ -29,7 +33,7 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 
 - persistir `usuario_sistema`, `perfil_acesso` e `refresh_tokens`
 - implementar `refresh`, `logout` e `sensitive session`
-- criar os proximos modulos de dominio: pessoas, vinculos, ocorrencias e anexos
+- criar os proximos modulos de dominio: ocorrencias, anexos e recebimentos
 - ligar storage privado para anexos
 - expandir as proximas migracoes e seeds dos modulos restantes
 
@@ -42,31 +46,37 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 npm.cmd install
 ```
 
-3. Gere o client do Prisma:
+3. Suba a instância MySQL local do projeto:
+
+```powershell
+npm.cmd run db:local:setup
+```
+
+4. Gere o client do Prisma:
 
 ```powershell
 npm.cmd run prisma:generate
 ```
 
-4. Aplique a migration inicial no banco:
+5. Aplique a migration inicial no banco:
 
 ```powershell
 npm.cmd run prisma:migrate:deploy
 ```
 
-5. Rode o seed inicial:
+6. Rode o seed inicial:
 
 ```powershell
 npm.cmd run prisma:seed
 ```
 
-6. Rode em desenvolvimento:
+7. Rode em desenvolvimento:
 
 ```powershell
 npm.cmd run start:dev
 ```
 
-7. Swagger:
+8. Swagger:
 
 ```text
 http://localhost:3000/api/docs
@@ -81,6 +91,17 @@ Se `.env` ainda nao existir ou `DATABASE_URL` nao estiver preenchida:
 - endpoints de dominio com Prisma respondem `503`.
 
 Isso permite iniciar o front e o contrato da API antes do banco final estar fechado.
+
+## Banco local do projeto
+
+O repositório já traz scripts para uma instância MySQL isolada em `127.0.0.1:3308`, sem depender do serviço MySQL principal da máquina:
+
+```powershell
+npm.cmd run db:local:setup
+npm.cmd run db:local:stop
+```
+
+Arquivos locais dessa instância ficam em `.local/mysql/` e não entram no versionamento.
 
 ## Migration inicial
 
@@ -149,6 +170,20 @@ docs/
 - `GET /api/v1/contratos/:publicId`
 - `POST /api/v1/contratos`
 
+### Pessoas
+
+- `GET /api/v1/pessoas`
+- `GET /api/v1/pessoas/:publicId`
+- `POST /api/v1/pessoas`
+
+### Vinculos
+
+- `GET /api/v1/vinculos`
+- `GET /api/v1/vinculos/:publicId`
+- `POST /api/v1/vinculos`
+- `POST /api/v1/vinculos/:publicId/movimentacoes`
+- `POST /api/v1/vinculos/:publicId/desligamento`
+
 ## Seed inicial
 
 O seed atual faz tres coisas:
@@ -169,5 +204,5 @@ SEED_ENABLE_SAMPLE_DATA=false
 Regras:
 
 - sem `SEED_ADMIN_EMAIL`, nenhum usuario admin e criado;
-- com `SEED_ENABLE_SAMPLE_DATA=true`, o seed cria uma prestadora, um cliente e um contrato de exemplo;
+- com `SEED_ENABLE_SAMPLE_DATA=true`, o seed cria uma prestadora, um cliente, um contrato, um posto, uma pessoa e um vinculo de exemplo;
 - o seed e idempotente, entao pode ser executado novamente sem duplicar os registros base.
