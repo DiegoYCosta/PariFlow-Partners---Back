@@ -30,6 +30,8 @@ export class EmploymentLinksController {
     summary: 'Lista vinculos com filtros operacionais e paginacao.'
   })
   list(@Query() query: ListEmploymentLinksQueryDto) {
+    // Vinculo e o modulo que mais tende a puxar filtros compostos.
+    // Vale manter naming previsivel aqui para o front nao nascer com parser proprio.
     return this.employmentLinksService.list(query);
   }
 
@@ -38,6 +40,8 @@ export class EmploymentLinksController {
     summary: 'Busca um vinculo com posto, contrato, movimentacoes e desligamento.'
   })
   findOne(@Param('publicId') publicId: string) {
+    // O detalhe ja entrega contexto, historico e desfecho no mesmo payload.
+    // Isso reduz roundtrip e evita o front remontar cronologia por conta propria.
     return this.employmentLinksService.findOne(publicId);
   }
 
@@ -46,6 +50,8 @@ export class EmploymentLinksController {
     summary: 'Cria um novo vinculo entre pessoa, prestadora, contrato e posto.'
   })
   create(@Body() dto: CreateEmploymentLinkDto) {
+    // Aqui o front so envia referencias externas e dados de dominio.
+    // A conciliacao entre pessoa, contrato e posto continua responsabilidade do backend.
     return this.employmentLinksService.create(dto);
   }
 

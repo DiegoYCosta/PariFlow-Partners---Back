@@ -9,7 +9,8 @@ import {
 
 export class CreateEmploymentMoveDto {
   @ApiProperty({
-    example: 'TRANSFERENCIA'
+    example: 'TRANSFERENCIA',
+    description: 'Tipo tecnico da movimentacao. O front pode rotular, mas nao deve inventar codigo paralelo.'
   })
   @IsString()
   @IsNotEmpty()
@@ -33,7 +34,8 @@ export class CreateEmploymentMoveDto {
   destination?: string;
 
   @ApiProperty({
-    example: '2026-05-03T08:00:00.000Z'
+    example: '2026-05-03T08:00:00.000Z',
+    description: 'Data em ISO 8601 para o historico continuar ordenavel e auditavel.'
   })
   @IsString()
   @IsISO8601()

@@ -21,6 +21,8 @@ export class InternalAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authorization = request.headers.authorization;
 
+    // O front fala com os modulos internos sempre por Bearer do access token.
+    // Quando refresh entrar de vez, o formato do header continua este.
     if (!authorization?.startsWith('Bearer ')) {
       throw new UnauthorizedException('Token de acesso nao informado.');
     }

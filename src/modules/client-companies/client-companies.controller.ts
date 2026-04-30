@@ -20,6 +20,8 @@ export class ClientCompaniesController {
     summary: 'Lista clientes contratantes com busca e paginacao.'
   })
   list(@Query() query: PaginationQueryDto) {
+    // Mantem o mesmo trilho de listagem dos demais cadastros para o front
+    // reaproveitar busca, pagina e leitura de retorno sem if por modulo.
     return this.clientCompaniesService.list(query);
   }
 

@@ -4,6 +4,8 @@ export interface AuthCapabilities {
   canSoftDeleteAttachment: boolean;
 }
 
+// Esse payload carrega o minimo que a interface precisa para montar navegacao
+// e bloqueios iniciais sem roundtrip extra. A regra fina continua no backend.
 export interface AuthTokenPayload {
   sub: string;
   firebaseUid: string;

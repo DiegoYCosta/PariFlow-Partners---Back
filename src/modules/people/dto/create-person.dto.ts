@@ -15,7 +15,8 @@ import { CreateExternalWorkDto } from './create-external-work.dto';
 
 export class CreatePersonDto {
   @ApiProperty({
-    example: 'Joao da Silva'
+    example: 'Joao da Silva',
+    description: 'Registro-base da pessoa, separado do contexto de empresa, contrato e vinculo.'
   })
   @IsString()
   @IsNotEmpty()
@@ -55,7 +56,8 @@ export class CreatePersonDto {
   phone?: string;
 
   @ApiPropertyOptional({
-    example: '1992-06-15T00:00:00.000Z'
+    example: '1992-06-15T00:00:00.000Z',
+    description: 'Data em ISO 8601 para a API manter um unico formato entre cadastro, detalhe e historico.'
   })
   @IsOptional()
   @IsString()
@@ -66,7 +68,9 @@ export class CreatePersonDto {
     example: {
       city: 'Sao Paulo',
       state: 'SP'
-    }
+    },
+    description:
+      'Bloco flexivel de endereco. Se a tela passar a filtrar por chave fixa, vale modelar isso de forma estruturada.'
   })
   @IsOptional()
   @IsObject()
@@ -80,7 +84,9 @@ export class CreatePersonDto {
   notes?: string;
 
   @ApiPropertyOptional({
-    type: [CreateExternalWorkDto]
+    type: [CreateExternalWorkDto],
+    description:
+      'Historico externo opcional, mantido separado do vinculo formal para o front nao misturar trajetorias.'
   })
   @IsOptional()
   @IsArray()

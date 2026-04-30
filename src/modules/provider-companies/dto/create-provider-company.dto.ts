@@ -3,7 +3,8 @@ import { IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from 'class-val
 
 export class CreateProviderCompanyDto {
   @ApiProperty({
-    example: 'PariFlow Servicos Ltda'
+    example: 'PariFlow Servicos Ltda',
+    description: 'Razao social como deve sair tambem nas listagens e detalhes.'
   })
   @IsString()
   @IsNotEmpty()
@@ -19,7 +20,9 @@ export class CreateProviderCompanyDto {
   tradeName?: string;
 
   @ApiProperty({
-    example: '12345678000199'
+    example: '12345678000199',
+    description:
+      'Documento usado para busca e conciliacao. O ideal e manter o mesmo formato de entrada e saida.'
   })
   @IsString()
   @IsNotEmpty()
@@ -27,7 +30,9 @@ export class CreateProviderCompanyDto {
   document!: string;
 
   @ApiProperty({
-    example: 'ACTIVE'
+    example: 'ACTIVE',
+    description:
+      'Status de dominio. O front pode traduzir label, mas nao deve inventar valor diferente do enviado pela API.'
   })
   @IsString()
   @IsNotEmpty()
@@ -38,7 +43,9 @@ export class CreateProviderCompanyDto {
     example: {
       phone: '(11) 99999-9999',
       email: 'contato@empresa.com'
-    }
+    },
+    description:
+      'Campo flexivel para a fase inicial. Se alguma chave virar regra de tela, vale promover para campo proprio.'
   })
   @IsOptional()
   @IsObject()

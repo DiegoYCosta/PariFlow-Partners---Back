@@ -37,6 +37,8 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new ResponseEnvelopeInterceptor());
+  // O front entra em cima de /api/v1 desde o primeiro dia. Se houver quebra
+  // de contrato depois, o caminho e versionar antes de mexer no prefixo atual.
   app.setGlobalPrefix(env.API_PREFIX, {
     exclude: ['health']
   });
@@ -52,6 +54,8 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
+  // Enquanto o front estiver entrando por partes, o Swagger precisa continuar
+  // espelhando o contrato real para reduzir ajuste manual e retrabalho.
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(env.PORT, '0.0.0.0');

@@ -22,6 +22,8 @@ export function buildPaginationMeta(
   perPage: number,
   total: number
 ) {
+  // A meta sai no mesmo eixo da query para o front manter cache, paginador
+  // e leitura de lista sem conversao escondida entre modulos.
   return {
     page,
     perPage,

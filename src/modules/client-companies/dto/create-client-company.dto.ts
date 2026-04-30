@@ -3,7 +3,8 @@ import { IsNotEmpty, IsObject, IsOptional, IsString, MaxLength } from 'class-val
 
 export class CreateClientCompanyDto {
   @ApiProperty({
-    example: 'Condominio Bela Vista'
+    example: 'Condominio Bela Vista',
+    description: 'Nome principal do cliente do jeito que vai aparecer para selecao e detalhe.'
   })
   @IsString()
   @IsNotEmpty()
@@ -11,7 +12,9 @@ export class CreateClientCompanyDto {
   name!: string;
 
   @ApiPropertyOptional({
-    example: '12345678000199'
+    example: '12345678000199',
+    description:
+      'Documento opcional, mas quando vier precisa seguir padrao estavel para busca e exibicao.'
   })
   @IsOptional()
   @IsString()
@@ -19,7 +22,8 @@ export class CreateClientCompanyDto {
   document?: string;
 
   @ApiProperty({
-    example: 'CONDOMINIO'
+    example: 'CONDOMINIO',
+    description: 'Tipo de cliente como valor de dominio, nao como texto livre de interface.'
   })
   @IsString()
   @IsNotEmpty()
@@ -30,7 +34,9 @@ export class CreateClientCompanyDto {
     example: {
       city: 'Sao Paulo',
       state: 'SP'
-    }
+    },
+    description:
+      'Endereco em bloco flexivel por enquanto. Se o front passar a depender de chave fixa, estruturar depois no contrato.'
   })
   @IsOptional()
   @IsObject()
@@ -45,7 +51,8 @@ export class CreateClientCompanyDto {
   contactName?: string;
 
   @ApiProperty({
-    example: 'ACTIVE'
+    example: 'ACTIVE',
+    description: 'Status de dominio que deve seguir igual nas listas, filtros e detalhe.'
   })
   @IsString()
   @IsNotEmpty()

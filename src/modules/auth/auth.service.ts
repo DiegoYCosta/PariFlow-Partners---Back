@@ -52,6 +52,8 @@ export class AuthService {
       expiresIn: `${env.JWT_ACCESS_TTL_MINUTES}m`
     });
 
+    // Esse snapshot precisa sair suficiente para o front montar sessao,
+    // navegacao e bloqueios iniciais sem adivinhar permissao na interface.
     return {
       accessToken,
       expiresInSeconds: env.JWT_ACCESS_TTL_MINUTES * 60,
@@ -63,6 +65,8 @@ export class AuthService {
   }
 
   async getCurrentUser(payload: AuthTokenPayload) {
+    // Mantem o formato vizinho ao exchange para o front reidratar sessao sem
+    // precisar abrir mapa de compatibilidade entre login e sessao corrente.
     return {
       user: {
         publicId: payload.sub,
@@ -147,6 +151,8 @@ export class AuthService {
     securityContext: AuthTokenPayload['securityContext'];
   }> {
     if (!env.DATABASE_URL) {
+      // Esse fallback segura o contrato de auth enquanto banco e Firebase ainda
+      // estao fechando, para o front conseguir subir fluxo e validacao basica.
       const isLocalDevelopmentIdentity = identity.firebaseUid === 'firebase-dev-local';
       const localProfiles = isLocalDevelopmentIdentity ? ['admin'] : [];
       const capabilities = isLocalDevelopmentIdentity
@@ -274,6 +280,8 @@ export class AuthService {
   }
 
   private mapProfileCode(code: AccessProfileCode): string {
+    // Os nomes mapeados aqui acabam virando contrato de interface e feature flag.
+    // Se trocar vocabulario, alinhar front e documentacao no mesmo movimento.
     switch (code) {
       case AccessProfileCode.ADMIN:
         return 'admin';

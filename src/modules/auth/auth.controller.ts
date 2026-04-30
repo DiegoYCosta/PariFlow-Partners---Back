@@ -36,6 +36,8 @@ export class AuthController {
     @Body() dto: SessionExchangeDto,
     @Res({ passthrough: true }) _reply: FastifyReply
   ) {
+    // Esse retorno precisa bastar para o bootstrap inicial da aplicacao.
+    // Se faltar contexto aqui, o front nasce dependente de chamada extra logo apos login.
     return this.authService.exchangeFirebaseSession(dto);
   }
 
@@ -46,6 +48,8 @@ export class AuthController {
     summary: 'Retorna a sessao atual com perfis e contexto de seguranca.'
   })
   async me(@Req() request: AuthenticatedRequest) {
+    // /me deve espelhar o retrato de sessao de forma estavel para reidratar
+    // estado, reabrir aba e validar renovacao sem surpresas por modulo.
     return this.authService.getCurrentUser(request.user!);
   }
 

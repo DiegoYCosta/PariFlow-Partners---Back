@@ -26,6 +26,8 @@ export class PrivilegedAccessGuard implements CanActivate {
       user.securityContext !== 'sensitive_verified' &&
       user.securityContext !== 'critical_verified'
     ) {
+      // Nao deixar o front inferir liberacao por nome de cargo solto.
+      // O gate real continua sendo o securityContext calculado no backend.
       throw new ForbiddenException(
         'Perfil interno ainda nao habilitado para este modulo.'
       );

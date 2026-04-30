@@ -20,6 +20,8 @@ export class ProviderCompaniesController {
     summary: 'Lista empresas prestadoras com busca e paginacao.'
   })
   list(@Query() query: PaginationQueryDto) {
+    // Lista simples, mas com o mesmo contrato base das outras telas.
+    // Filtro novo aqui precisa seguir query string previsivel para nao criar excecao no front.
     return this.providerCompaniesService.list(query);
   }
 

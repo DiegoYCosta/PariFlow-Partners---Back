@@ -26,6 +26,8 @@ export class PeopleController {
     summary: 'Busca uma pessoa com trabalhos externos e resumo de vinculos.'
   })
   findOne(@Param('publicId') publicId: string) {
+    // O detalhe de pessoa ja vem mais rico de proposito para sustentar ficha,
+    // historico e dossie futuro sem costura de varias chamadas no front.
     return this.peopleService.findOne(publicId);
   }
 

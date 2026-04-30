@@ -9,7 +9,8 @@ import {
 
 export class CreateDismissalDto {
   @ApiProperty({
-    example: '2026-04-28T15:00:00.000Z'
+    example: '2026-04-28T15:00:00.000Z',
+    description: 'Data em ISO 8601 para manter coerencia com a linha do tempo do vinculo.'
   })
   @IsString()
   @IsISO8601()
@@ -24,7 +25,8 @@ export class CreateDismissalDto {
   reason!: string;
 
   @ApiPropertyOptional({
-    example: 'SEM_JUSTA_CAUSA'
+    example: 'SEM_JUSTA_CAUSA',
+    description: 'Codigo de desligamento. A tela pode exibir texto amigavel, mas o valor tecnico vem da API.'
   })
   @IsOptional()
   @IsString()
@@ -32,7 +34,8 @@ export class CreateDismissalDto {
   dismissalType?: string;
 
   @ApiPropertyOptional({
-    example: 'Sem risco juridico identificado no desligamento.'
+    example: 'Sem risco juridico identificado no desligamento.',
+    description: 'Resumo objetivo para leitura de risco no historico e em relatorios futuros.'
   })
   @IsOptional()
   @IsString()

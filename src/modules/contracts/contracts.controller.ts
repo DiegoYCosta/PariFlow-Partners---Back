@@ -18,6 +18,8 @@ export class ContractsController {
     summary: 'Lista contratos com busca e paginacao.'
   })
   list(@Query() query: PaginationQueryDto) {
+    // Contrato lista por contexto de negocio, nao por join cru de banco.
+    // Se entrar filtro novo, preservar esse desenho para a UI continuar legivel.
     return this.contractsService.list(query);
   }
 
@@ -34,6 +36,8 @@ export class ContractsController {
     summary: 'Cria um novo contrato entre prestadora e cliente.'
   })
   create(@Body() dto: CreateContractDto) {
+    // O front sempre referencia prestadora e cliente por publicId ja carregado
+    // nas listas anteriores; nao abrir excecao aqui para id interno.
     return this.contractsService.create(dto);
   }
 }

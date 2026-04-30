@@ -58,6 +58,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(message, exception instanceof Error ? exception.stack : undefined);
     }
 
+    // code e traceId precisam seguir previsiveis para o front tratar erro
+    // sem parse especial por modulo e sem perder rastreabilidade.
     reply.status(status).send({
       error: {
         code,
