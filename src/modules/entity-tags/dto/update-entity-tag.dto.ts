@@ -1,9 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { EntityTagClassification } from '@prisma/client';
+import {
+  EntityTagClassification,
+  SensitiveAudienceGroup
+} from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -13,6 +19,18 @@ import {
 } from 'class-validator';
 
 export class UpdateEntityTagDto {
+  @ApiPropertyOptional({
+    example: 'usr_01hxyzabc123def456ghi789'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(26)
+  ownerUserPublicId?: string;
+
   @ApiPropertyOptional({
     example: 'filha com consulta nas segundas'
   })
@@ -42,6 +60,34 @@ export class UpdateEntityTagDto {
   @IsOptional()
   @IsEnum(EntityTagClassification)
   classification?: EntityTagClassification;
+
+  @ApiPropertyOptional({
+    enum: SensitiveAudienceGroup,
+    isArray: true
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(SensitiveAudienceGroup, { each: true })
+  allowedGroupKeys?: SensitiveAudienceGroup[];
+
+  @ApiPropertyOptional({
+    type: [String]
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value
+          .map((item) => (typeof item === 'string' ? item.trim() : item))
+          .filter((item) => typeof item === 'string' && item.length > 0)
+      : value
+  )
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(26, { each: true })
+  allowedUserPublicIds?: string[];
 
   @ApiPropertyOptional({
     example: '#536A75'

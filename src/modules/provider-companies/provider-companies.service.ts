@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EntityTagStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
@@ -14,29 +14,12 @@ type ProviderCompanyWithCounts = Prisma.ProviderCompanyGetPayload<{
         contracts: true;
         links: true;
         occurrences: true;
-        entityTags: true;
       };
     };
   };
 }>;
 
 type ProviderCompanyBase = Prisma.ProviderCompanyGetPayload<Record<string, never>>;
-
-type ProviderCompanyEntityTag = Prisma.EntityTagGetPayload<{
-  include: {
-    createdByUserSystem: true;
-  };
-}>;
-
-type ProviderCompanyWithRelations = Prisma.ProviderCompanyGetPayload<{
-  include: {
-    entityTags: {
-      include: {
-        createdByUserSystem: true;
-      };
-    };
-  };
-}>;
 
 @Injectable()
 export class ProviderCompaniesService {
@@ -71,8 +54,7 @@ export class ProviderCompaniesService {
               select: {
                 contracts: true,
                 links: true,
-                occurrences: true,
-                entityTags: true
+                occurrences: true
               }
             }
           }
@@ -93,18 +75,7 @@ export class ProviderCompaniesService {
 
     try {
       const item = await this.prisma.providerCompany.findUnique({
-        where: { publicId },
-        include: {
-          entityTags: {
-            where: {
-              status: EntityTagStatus.ACTIVE
-            },
-            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-            include: {
-              createdByUserSystem: true
-            }
-          }
-        }
+        where: { publicId }
       });
 
       if (!item) {
@@ -147,7 +118,6 @@ export class ProviderCompaniesService {
     item:
       | ProviderCompanyBase
       | ProviderCompanyWithCounts
-      | ProviderCompanyWithRelations
   ) {
     return {
       publicId: item.publicId,
@@ -160,34 +130,8 @@ export class ProviderCompaniesService {
       contractCount: '_count' in item ? item._count.contracts : undefined,
       linkCount: '_count' in item ? item._count.links : undefined,
       occurrenceCount: '_count' in item ? item._count.occurrences : undefined,
-      sensitiveTagCount: '_count' in item ? item._count.entityTags : undefined,
-      entityTags:
-        'entityTags' in item
-          ? item.entityTags.map((tag) => this.mapEntityTag(tag))
-          : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
-    };
-  }
-
-  private mapEntityTag(item: ProviderCompanyEntityTag) {
-    return {
-      publicId: item.publicId,
-      classification: item.classification,
-      status: item.status,
-      label: item.label,
-      content: item.content,
-      color: item.color,
-      sortOrder: item.sortOrder,
-      isAnonymousSubmission: item.isAnonymousSubmission,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-      createdBy: item.createdByUserSystem
-        ? {
-            publicId: item.createdByUserSystem.publicId,
-            name: item.createdByUserSystem.name
-          }
-        : null
     };
   }
 }

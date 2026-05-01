@@ -13,7 +13,6 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
-import { PrivilegedAccessGuard } from '../auth/guards/privileged-access.guard';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateEntityTagSubmissionDto } from './dto/create-entity-tag-submission.dto';
 import { ListEntityTagsQueryDto } from './dto/list-entity-tags-query.dto';
@@ -40,7 +39,7 @@ export class EntityTagsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
+  @UseGuards(InternalAuthGuard)
   @ApiOperation({
     summary:
       'Cria uma tag sensivel com autoria autenticada para pessoa ou empresa prestadora.'
@@ -49,7 +48,7 @@ export class EntityTagsController {
     @Body() dto: CreateEntityTagSubmissionDto,
     @Req() request: AuthenticatedRequest
   ) {
-    return this.entityTagsService.createInternal(dto, request.user!.sub);
+    return this.entityTagsService.createInternal(dto, request.user!);
   }
 
   @Get()
@@ -59,8 +58,11 @@ export class EntityTagsController {
     summary:
       'Lista tags ativas de uma pessoa ou empresa prestadora para usuario autenticado.'
   })
-  list(@Query() query: ListEntityTagsQueryDto) {
-    return this.entityTagsService.list(query);
+  list(
+    @Query() query: ListEntityTagsQueryDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.entityTagsService.list(query, request.user!);
   }
 
   @Get(':publicId')
@@ -70,23 +72,31 @@ export class EntityTagsController {
     summary:
       'Busca uma tag de entidade pelo identificador publico para usuario autenticado.'
   })
-  findOne(@Param('publicId') publicId: string) {
-    return this.entityTagsService.findOne(publicId);
+  findOne(
+    @Param('publicId') publicId: string,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.entityTagsService.findOne(publicId, request.user!);
   }
 
   @Patch(':publicId')
   @ApiBearerAuth()
-  @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
+  @UseGuards(InternalAuthGuard)
   @ApiOperation({
-    summary: 'Atualiza a classificacao, conteudo ou ordenacao de uma tag.'
+    summary:
+      'Atualiza conteudo, compartilhamento ou ordenacao de uma tag respeitando a autoria autenticada.'
   })
-  update(@Param('publicId') publicId: string, @Body() dto: UpdateEntityTagDto) {
-    return this.entityTagsService.update(publicId, dto);
+  update(
+    @Param('publicId') publicId: string,
+    @Body() dto: UpdateEntityTagDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.entityTagsService.update(publicId, dto, request.user!);
   }
 
   @Delete(':publicId')
   @ApiBearerAuth()
-  @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
+  @UseGuards(InternalAuthGuard)
   @ApiOperation({
     summary: 'Remove logicamente uma tag de entidade.'
   })
@@ -94,6 +104,6 @@ export class EntityTagsController {
     @Param('publicId') publicId: string,
     @Req() request: AuthenticatedRequest
   ) {
-    return this.entityTagsService.remove(publicId, request.user!.sub);
+    return this.entityTagsService.remove(publicId, request.user!);
   }
 }

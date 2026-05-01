@@ -1,10 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   EntityTagClassification,
-  EntityTagTargetType
+  EntityTagTargetType,
+  SensitiveAudienceGroup
 } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -39,6 +42,19 @@ export class CreateEntityTagSubmissionDto {
   targetPublicId!: string;
 
   @ApiProperty({
+    example: 'usr_01hxyzabc123def456ghi789',
+    description:
+      'publicId do colaborador autenticado que sera tratado como dono do conteudo para leitura, edicao e exclusao futuras.'
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(26)
+  ownerUserPublicId!: string;
+
+  @ApiProperty({
     example: 'costuma atrasar',
     description: 'Rotulo curto da tag operacional ou contextual.'
   })
@@ -70,6 +86,38 @@ export class CreateEntityTagSubmissionDto {
   })
   @IsEnum(EntityTagClassification)
   classification!: EntityTagClassification;
+
+  @ApiPropertyOptional({
+    enum: SensitiveAudienceGroup,
+    isArray: true,
+    description:
+      'Grupos de colaboradores autorizados a consultar a tag alem da autoria.'
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(SensitiveAudienceGroup, { each: true })
+  allowedGroupKeys?: SensitiveAudienceGroup[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Lista opcional de colaboradores especificos autorizados a consultar a tag.'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value
+          .map((item) => (typeof item === 'string' ? item.trim() : item))
+          .filter((item) => typeof item === 'string' && item.length > 0)
+      : value
+  )
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(26, { each: true })
+  allowedUserPublicIds?: string[];
 
   @ApiPropertyOptional({
     example: '#BF6B2D',

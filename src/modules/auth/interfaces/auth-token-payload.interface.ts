@@ -1,3 +1,5 @@
+import { SensitiveAudienceGroup } from '@prisma/client';
+
 export interface AuthCapabilities {
   canViewSensitive: boolean;
   canDownloadAttachments: boolean;
@@ -11,6 +13,11 @@ export interface AuthTokenPayload {
   firebaseUid: string;
   email: string | null;
   profiles: string[];
-  securityContext: 'authenticated' | 'privileged' | 'sensitive_verified' | 'critical_verified';
+  audienceGroups: SensitiveAudienceGroup[];
+  securityContext:
+    | 'authenticated'
+    | 'privileged'
+    | 'sensitive_verified'
+    | 'critical_verified';
   capabilities: AuthCapabilities;
 }

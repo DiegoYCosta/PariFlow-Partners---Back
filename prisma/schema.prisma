@@ -52,6 +52,12 @@ enum AttachmentClassification {
   SUPPORTING_REFERENCE
 }
 
+enum SensitiveAudienceGroup {
+  DIRECTOR
+  SUPERVISION
+  AUXILIARY
+}
+
 enum EntityTagTargetType {
   PERSON
   PROVIDER_COMPANY
@@ -94,23 +100,28 @@ enum SecurityEventType {
 }
 
 model UserSystem {
-  id                BigInt              @id @default(autoincrement())
-  publicId          String              @unique @db.VarChar(26)
-  firebaseUid       String?             @unique @db.VarChar(128)
-  name              String              @db.VarChar(160)
-  email             String              @unique @db.VarChar(180)
-  status            UserSystemStatus    @default(ACTIVE)
-  mfaEnabled        Boolean             @default(false)
-  lastAccessAt      DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  accessProfiles    UserAccessProfile[]
-  refreshTokens     RefreshToken[]
-  securityEvents    SecurityEvent[]
-  sensitiveAccess   SensitiveSession[]
-  auditLogs         AuditLog[]
-  createdEntityTags EntityTag[]         @relation("EntityTagCreatedBy")
-  removedEntityTags EntityTag[]         @relation("EntityTagRemovedBy")
+  id                 BigInt                   @id @default(autoincrement())
+  publicId           String                   @unique @db.VarChar(26)
+  firebaseUid        String?                  @unique @db.VarChar(128)
+  name               String                   @db.VarChar(160)
+  email              String                   @unique @db.VarChar(180)
+  status             UserSystemStatus         @default(ACTIVE)
+  mfaEnabled         Boolean                  @default(false)
+  lastAccessAt       DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  accessProfiles     UserAccessProfile[]
+  refreshTokens      RefreshToken[]
+  securityEvents     SecurityEvent[]
+  sensitiveAccess    SensitiveSession[]
+  auditLogs          AuditLog[]
+  createdEntityTags  EntityTag[]              @relation("EntityTagCreatedBy")
+  removedEntityTags  EntityTag[]              @relation("EntityTagRemovedBy")
+  ownedEntityTags    EntityTag[]              @relation("EntityTagOwnedBy")
+  ownedAttachments   Attachment[]             @relation("AttachmentOwnedBy")
+  createdAttachments Attachment[]             @relation("AttachmentCreatedBy")
+  entityTagAudience  EntityTagAudienceUser[]
+  attachmentAudience AttachmentAudienceUser[]
 
   @@map("usuario_sistema")
 }
@@ -344,57 +355,113 @@ model Occurrence {
 }
 
 model Attachment {
-  id                   BigInt                   @id @default(autoincrement())
-  publicId             String                   @unique @db.VarChar(26)
-  occurrenceId         BigInt
-  displayScope         String                   @db.VarChar(60)
-  classification       AttachmentClassification @default(FORMAL_DOCUMENT)
-  fileName             String                   @db.VarChar(180)
-  mimeType             String?                  @db.VarChar(120)
-  storagePath          String?                  @db.VarChar(255)
-  externalLink         String?                  @db.VarChar(255)
-  physicalLocation     String?                  @db.VarChar(255)
-  visibleInExecutive   Boolean                  @default(false)
-  visibleInContext     Boolean                  @default(true)
-  requiresConfirmation Boolean                  @default(false)
-  version              Int                      @default(1)
-  status               AttachmentStatus         @default(ACTIVE)
-  deletedAt            DateTime?
-  deleteReason         String?                  @db.VarChar(255)
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  occurrence           Occurrence               @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  id                    BigInt                    @id @default(autoincrement())
+  publicId              String                    @unique @db.VarChar(26)
+  occurrenceId          BigInt
+  ownerUserSystemId     BigInt?
+  createdByUserSystemId BigInt?
+  displayScope          String                    @db.VarChar(60)
+  classification        AttachmentClassification  @default(FORMAL_DOCUMENT)
+  fileName              String                    @db.VarChar(180)
+  mimeType              String?                   @db.VarChar(120)
+  storagePath           String?                   @db.VarChar(255)
+  externalLink          String?                   @db.VarChar(255)
+  physicalLocation      String?                   @db.VarChar(255)
+  visibleInExecutive    Boolean                   @default(false)
+  visibleInContext      Boolean                   @default(true)
+  requiresConfirmation  Boolean                   @default(false)
+  version               Int                       @default(1)
+  status                AttachmentStatus          @default(ACTIVE)
+  deletedAt             DateTime?
+  deleteReason          String?                   @db.VarChar(255)
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  occurrence            Occurrence                @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  ownerUserSystem       UserSystem?               @relation("AttachmentOwnedBy", fields: [ownerUserSystemId], references: [id], onDelete: SetNull)
+  createdByUserSystem   UserSystem?               @relation("AttachmentCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+  audienceGroups        AttachmentAudienceGroup[]
+  audienceUsers         AttachmentAudienceUser[]
 
   @@map("anexo")
 }
 
 model EntityTag {
-  id                    BigInt                  @id @default(autoincrement())
-  publicId              String                  @unique @db.VarChar(26)
+  id                    BigInt                   @id @default(autoincrement())
+  publicId              String                   @unique @db.VarChar(26)
   targetType            EntityTagTargetType
   personId              BigInt?
   providerCompanyId     BigInt?
   classification        EntityTagClassification
-  status                EntityTagStatus         @default(ACTIVE)
-  label                 String                  @db.VarChar(80)
-  content               String                  @db.VarChar(350)
-  color                 String                  @db.VarChar(32)
-  sortOrder             Int                     @default(0)
-  isAnonymousSubmission Boolean                 @default(true)
+  status                EntityTagStatus          @default(ACTIVE)
+  label                 String                   @db.VarChar(80)
+  content               String                   @db.VarChar(350)
+  color                 String                   @db.VarChar(32)
+  sortOrder             Int                      @default(0)
+  isAnonymousSubmission Boolean                  @default(true)
+  ownerUserSystemId     BigInt?
   createdByUserSystemId BigInt?
   removedByUserSystemId BigInt?
   removedAt             DateTime?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  person                Person?                 @relation(fields: [personId], references: [id], onDelete: Cascade)
-  providerCompany       ProviderCompany?        @relation(fields: [providerCompanyId], references: [id], onDelete: Cascade)
-  createdByUserSystem   UserSystem?             @relation("EntityTagCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
-  removedByUserSystem   UserSystem?             @relation("EntityTagRemovedBy", fields: [removedByUserSystemId], references: [id], onDelete: SetNull)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  person                Person?                  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  providerCompany       ProviderCompany?         @relation(fields: [providerCompanyId], references: [id], onDelete: Cascade)
+  ownerUserSystem       UserSystem?              @relation("EntityTagOwnedBy", fields: [ownerUserSystemId], references: [id], onDelete: SetNull)
+  createdByUserSystem   UserSystem?              @relation("EntityTagCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+  removedByUserSystem   UserSystem?              @relation("EntityTagRemovedBy", fields: [removedByUserSystemId], references: [id], onDelete: SetNull)
+  audienceGroups        EntityTagAudienceGroup[]
+  audienceUsers         EntityTagAudienceUser[]
 
   @@index([targetType, status, sortOrder])
   @@index([personId, status])
   @@index([providerCompanyId, status])
   @@map("tag_entidade")
+}
+
+model AttachmentAudienceGroup {
+  id           BigInt                 @id @default(autoincrement())
+  attachmentId BigInt
+  groupKey     SensitiveAudienceGroup
+  createdAt    DateTime               @default(now())
+  attachment   Attachment             @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@unique([attachmentId, groupKey])
+  @@map("anexo_grupo_visibilidade")
+}
+
+model AttachmentAudienceUser {
+  id           BigInt     @id @default(autoincrement())
+  attachmentId BigInt
+  userSystemId BigInt
+  createdAt    DateTime   @default(now())
+  attachment   Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  userSystem   UserSystem @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+
+  @@unique([attachmentId, userSystemId])
+  @@map("anexo_usuario_visibilidade")
+}
+
+model EntityTagAudienceGroup {
+  id          BigInt                 @id @default(autoincrement())
+  entityTagId BigInt
+  groupKey    SensitiveAudienceGroup
+  createdAt   DateTime               @default(now())
+  entityTag   EntityTag              @relation(fields: [entityTagId], references: [id], onDelete: Cascade)
+
+  @@unique([entityTagId, groupKey])
+  @@map("tag_entidade_grupo_visibilidade")
+}
+
+model EntityTagAudienceUser {
+  id           BigInt     @id @default(autoincrement())
+  entityTagId  BigInt
+  userSystemId BigInt
+  createdAt    DateTime   @default(now())
+  entityTag    EntityTag  @relation(fields: [entityTagId], references: [id], onDelete: Cascade)
+  userSystem   UserSystem @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+
+  @@unique([entityTagId, userSystemId])
+  @@map("tag_entidade_usuario_visibilidade")
 }
 
 model DocumentReceipt {

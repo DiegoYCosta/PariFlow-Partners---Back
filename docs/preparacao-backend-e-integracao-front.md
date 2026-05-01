@@ -385,6 +385,19 @@ Se houver extensao controlada, usar:
 - `valor_customizado`
 - `tag_entidade`
 
+No caso de `tag_entidade`, o uso deixa de ser abstrato e passa a ser este:
+
+- anotar pessoa ou empresa prestadora com memoria operacional sensivel;
+- aceitar submissao sem login no fluxo de entrada;
+- exigir autenticacao para consulta;
+- separar classificacoes como `BEHAVIORAL_SIGNAL`, `FAMILY_CONTEXT`, `TRAINING_OR_SKILL` e `OPERATIONAL_RISK`;
+- limitar cada anotacao a `350` caracteres;
+- preservar `label`, `color`, `sortOrder`, autoria autenticada quando houver e remocao logica auditavel;
+- registrar `ownerUserPublicId`, `allowedGroupKeys` e `allowedUserPublicIds` como ACL explicita do conteudo;
+- impedir que listagens genericas de pessoa ou empresa vazem contagem, existencia, titulo ou resumo de conteudo protegido quando a ACL nao puder ser calculada com seguranca.
+
+Tambem fica definido desde ja que `anexo` passa a carregar `classification`, `ownerUserPublicId`, grupos compartilhados e pessoas compartilhadas, para separar documento formal de anexo sensivel e referencia de apoio sem misturar permissao na interface.
+
 ## 9. Rotas minimas do primeiro ciclo
 
 ### 9.1 Autenticacao
@@ -427,7 +440,40 @@ Se houver extensao controlada, usar:
 - `GET /api/v1/anexos/:publicId/download`
 - `POST /api/v1/anexos/:publicId/soft-delete`
 
-### 9.5 Auditoria e relatorios
+### 9.5 Tags sensiveis por entidade
+
+- `POST /api/v1/tags-entidade/submissions`
+- `POST /api/v1/tags-entidade`
+- `GET /api/v1/tags-entidade?targetType=PERSON&targetPublicId=...`
+- `GET /api/v1/tags-entidade/:publicId`
+- `PATCH /api/v1/tags-entidade/:publicId`
+- `DELETE /api/v1/tags-entidade/:publicId`
+
+Regras minimas:
+
+- `submissions` aceita entrada anonima controlada, mas ja precisa carregar `ownerUserPublicId` e ACL explicita;
+- `GET` exige usuario autenticado e so pode devolver o que estiver compartilhado com a autoria, com um grupo permitido ou com um colaborador especifico;
+- `POST`, `PATCH` e `DELETE` internos exigem usuario autenticado; gestao fica restrita a autoria ou a override privilegiado auditavel;
+- listagem e detalhe continuam trabalhando com `publicId` do alvo;
+- sem contexto autenticado autorizado, a API nao devolve contagem, existencia, titulo ou resumo de conteudo protegido.
+
+### 9.6 Anexos protegidos
+
+- `GET /api/v1/anexos?occurrencePublicId=...`
+- `GET /api/v1/anexos/:publicId`
+- `POST /api/v1/anexos/submissions`
+- `POST /api/v1/anexos`
+- `PATCH /api/v1/anexos/:publicId`
+- `DELETE /api/v1/anexos/:publicId`
+
+Regras minimas:
+
+- anexos protegidos seguem `ownerUserPublicId`, `allowedGroupKeys` e `allowedUserPublicIds`;
+- leitura e download exigem usuario autenticado e passam por ACL por conteudo;
+- sem login, o sistema nao revela quantidade, existencia, titulo nem resumo de material protegido;
+- a mesma politica vale para documento formal, anexo sensivel e referencia de apoio.
+
+### 9.7 Auditoria e relatorios
 
 - `GET /api/v1/auditoria`
 - `GET /api/v1/relatorios/painel-executivo`
@@ -459,6 +505,7 @@ Exemplo:
     },
     "securityContext": "authenticated",
     "profiles": ["juridico"],
+    "audienceGroups": ["SUPERVISION"],
     "capabilities": {
       "canViewSensitive": true,
       "canDownloadAttachments": false,
@@ -479,6 +526,9 @@ Criar endpoints de catalogo para:
 - tipos de ocorrencia;
 - niveis de gravidade;
 - visibilidades;
+- classificacoes de anexo;
+- classificacoes de tag sensivel;
+- grupos de compartilhamento sensivel;
 - status de vinculo;
 - perfis de acesso;
 - tipos de desligamento;
@@ -531,6 +581,8 @@ Front pede acesso
 - mascaramento parcial em telas nao criticas;
 - criptografia em transito e em repouso;
 - perfis e permissoes por papel;
+- ACL por autoria, grupos e pessoas especificas para cada tag sensivel e cada anexo protegido;
+- nenhuma resposta anonima ou sem ACL validada pode denunciar existencia de conteudo protegido;
 - confirmacao reforcada para conteudo altamente sensivel.
 
 ### 11.2 O que precisa ser auditado
@@ -542,6 +594,8 @@ Front pede acesso
 - download e exportacao;
 - criacao e alteracao de ocorrencia;
 - upload e exclusao logica de anexo;
+- alteracao de ACL de tag sensivel ou anexo protegido;
+- tentativa negada de leitura, download, edicao ou remocao de conteudo sensivel;
 - acessos negados.
 
 ### 11.3 Estrategia de exclusao

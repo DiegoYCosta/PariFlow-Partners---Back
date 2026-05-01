@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './infra/database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { ClientCompaniesModule } from './modules/client-companies/client-companies.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { EntityTagsModule } from './modules/entity-tags/entity-tags.module';

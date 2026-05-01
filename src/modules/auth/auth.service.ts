@@ -3,9 +3,8 @@ import {
   NotImplementedException,
   UnauthorizedException
 } from '@nestjs/common';
-import { AccessProfileCode } from '@prisma/client';
+import { AccessProfileCode, SensitiveAudienceGroup } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
-import { ulid } from 'ulid';
 import { createPublicId } from '../../common/utils/public-id';
 import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
@@ -43,6 +42,7 @@ export class AuthService {
       firebaseUid: sessionSnapshot.user.firebaseUid,
       email: sessionSnapshot.user.email,
       profiles: sessionSnapshot.profiles,
+      audienceGroups: sessionSnapshot.audienceGroups,
       securityContext: sessionSnapshot.securityContext,
       capabilities: sessionSnapshot.capabilities
     };
@@ -59,6 +59,7 @@ export class AuthService {
       expiresInSeconds: env.JWT_ACCESS_TTL_MINUTES * 60,
       securityContext: sessionSnapshot.securityContext,
       profiles: sessionSnapshot.profiles,
+      audienceGroups: sessionSnapshot.audienceGroups,
       capabilities: sessionSnapshot.capabilities,
       user: sessionSnapshot.user
     };
@@ -75,13 +76,14 @@ export class AuthService {
       },
       securityContext: payload.securityContext,
       profiles: payload.profiles,
+      audienceGroups: payload.audienceGroups,
       capabilities: payload.capabilities
     };
   }
 
   async refreshSession() {
-    // Quando o ciclo de sessão interna estiver completo, este endpoint passa a
-    // rotacionar refresh_tokens persistidos e a renovar o contexto do usuário.
+    // Quando o ciclo de sessao interna estiver completo, este endpoint passa a
+    // rotacionar refresh_tokens persistidos e a renovar o contexto do usuario.
     throw new NotImplementedException(
       'Refresh token rotativo ainda nao foi habilitado.'
     );
@@ -94,8 +96,8 @@ export class AuthService {
   }
 
   async startSensitiveSession() {
-    // A documentação prevê step-up para anexos, downloads e relatórios críticos.
-    // Esse fluxo será ligado às tabelas sensitive_sessions e security_events.
+    // A documentacao preve step-up para anexos, downloads e relatorios criticos.
+    // Esse fluxo sera ligado as tabelas sensitive_sessions e security_events.
     throw new NotImplementedException(
       'Sessao sensivel ainda nao foi habilitada.'
     );
@@ -147,6 +149,7 @@ export class AuthService {
   private async resolveSessionSnapshot(identity: SessionIdentity): Promise<{
     user: SessionUser;
     profiles: string[];
+    audienceGroups: SensitiveAudienceGroup[];
     capabilities: AuthCapabilities;
     securityContext: AuthTokenPayload['securityContext'];
   }> {
@@ -155,6 +158,7 @@ export class AuthService {
       // estao fechando, para o front conseguir subir fluxo e validacao basica.
       const isLocalDevelopmentIdentity = identity.firebaseUid === 'firebase-dev-local';
       const localProfiles = isLocalDevelopmentIdentity ? ['admin'] : [];
+      const audienceGroups = this.resolveAudienceGroupsFromProfileKeys(localProfiles);
       const capabilities = isLocalDevelopmentIdentity
         ? {
             canViewSensitive: true,
@@ -171,6 +175,7 @@ export class AuthService {
           ...identity
         },
         profiles: localProfiles,
+        audienceGroups,
         capabilities,
         securityContext: this.resolveSecurityContext(localProfiles, capabilities)
       };
@@ -179,6 +184,7 @@ export class AuthService {
     const persistedUser = await this.upsertInternalUser(identity);
     const profiles = await this.loadUserProfiles(persistedUser.id);
     const capabilities = this.buildCapabilities(profiles);
+    const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
 
     return {
       user: {
@@ -190,6 +196,7 @@ export class AuthService {
       profiles: profiles.map((profile) =>
         this.mapProfileCode(profile.accessProfile.code)
       ),
+      audienceGroups,
       capabilities,
       securityContext: this.resolveSecurityContext(profiles, capabilities)
     };
@@ -244,7 +251,7 @@ export class AuthService {
     });
   }
 
-  // O front consome essas capacidades diretamente para montar navegação e
+  // O front consome essas capacidades diretamente para montar navegacao e
   // bloqueios de interface sem depender de regra duplicada no cliente.
   private buildCapabilities(
     profiles: Array<{
@@ -277,6 +284,56 @@ export class AuthService {
     }
 
     return 'authenticated';
+  }
+
+  private resolveAudienceGroupsFromProfiles(
+    profiles: Array<{
+      accessProfile: {
+        code: AccessProfileCode;
+      };
+    }>
+  ): SensitiveAudienceGroup[] {
+    return this.uniqueAudienceGroups(
+      profiles.flatMap((profile) => {
+        switch (profile.accessProfile.code) {
+          case AccessProfileCode.ADMIN:
+          case AccessProfileCode.EXECUTIVE:
+            return [SensitiveAudienceGroup.DIRECTOR];
+          case AccessProfileCode.LEGAL:
+          case AccessProfileCode.HR:
+          case AccessProfileCode.OPERATIONS:
+            return [SensitiveAudienceGroup.SUPERVISION];
+          default:
+            return [];
+        }
+      })
+    );
+  }
+
+  private resolveAudienceGroupsFromProfileKeys(
+    profileKeys: string[]
+  ): SensitiveAudienceGroup[] {
+    return this.uniqueAudienceGroups(
+      profileKeys.flatMap((profileKey) => {
+        switch (profileKey) {
+          case 'admin':
+          case 'executive':
+            return [SensitiveAudienceGroup.DIRECTOR];
+          case 'legal':
+          case 'hr':
+          case 'operations':
+            return [SensitiveAudienceGroup.SUPERVISION];
+          default:
+            return [];
+        }
+      })
+    );
+  }
+
+  private uniqueAudienceGroups(
+    groups: SensitiveAudienceGroup[]
+  ): SensitiveAudienceGroup[] {
+    return Array.from(new Set(groups));
   }
 
   private mapProfileCode(code: AccessProfileCode): string {
