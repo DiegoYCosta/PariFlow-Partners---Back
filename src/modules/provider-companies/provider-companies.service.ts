@@ -1,11 +1,42 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { EntityTagStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { CreateProviderCompanyDto } from './dto/create-provider-company.dto';
+
+type ProviderCompanyWithCounts = Prisma.ProviderCompanyGetPayload<{
+  include: {
+    _count: {
+      select: {
+        contracts: true;
+        links: true;
+        occurrences: true;
+        entityTags: true;
+      };
+    };
+  };
+}>;
+
+type ProviderCompanyBase = Prisma.ProviderCompanyGetPayload<Record<string, never>>;
+
+type ProviderCompanyEntityTag = Prisma.EntityTagGetPayload<{
+  include: {
+    createdByUserSystem: true;
+  };
+}>;
+
+type ProviderCompanyWithRelations = Prisma.ProviderCompanyGetPayload<{
+  include: {
+    entityTags: {
+      include: {
+        createdByUserSystem: true;
+      };
+    };
+  };
+}>;
 
 @Injectable()
 export class ProviderCompaniesService {
@@ -34,7 +65,17 @@ export class ProviderCompaniesService {
           where,
           skip,
           take: perPage,
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          include: {
+            _count: {
+              select: {
+                contracts: true,
+                links: true,
+                occurrences: true,
+                entityTags: true
+              }
+            }
+          }
         })
       ]);
 
@@ -52,7 +93,18 @@ export class ProviderCompaniesService {
 
     try {
       const item = await this.prisma.providerCompany.findUnique({
-        where: { publicId }
+        where: { publicId },
+        include: {
+          entityTags: {
+            where: {
+              status: EntityTagStatus.ACTIVE
+            },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+            include: {
+              createdByUserSystem: true
+            }
+          }
+        }
       });
 
       if (!item) {
@@ -92,7 +144,10 @@ export class ProviderCompaniesService {
   }
 
   private mapProviderCompany(
-    item: Awaited<ReturnType<PrismaService['providerCompany']['findFirstOrThrow']>>
+    item:
+      | ProviderCompanyBase
+      | ProviderCompanyWithCounts
+      | ProviderCompanyWithRelations
   ) {
     return {
       publicId: item.publicId,
@@ -102,8 +157,37 @@ export class ProviderCompaniesService {
       status: item.status,
       contactsJson: item.contactsJson,
       notes: item.notes,
+      contractCount: '_count' in item ? item._count.contracts : undefined,
+      linkCount: '_count' in item ? item._count.links : undefined,
+      occurrenceCount: '_count' in item ? item._count.occurrences : undefined,
+      sensitiveTagCount: '_count' in item ? item._count.entityTags : undefined,
+      entityTags:
+        'entityTags' in item
+          ? item.entityTags.map((tag) => this.mapEntityTag(tag))
+          : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
+    };
+  }
+
+  private mapEntityTag(item: ProviderCompanyEntityTag) {
+    return {
+      publicId: item.publicId,
+      classification: item.classification,
+      status: item.status,
+      label: item.label,
+      content: item.content,
+      color: item.color,
+      sortOrder: item.sortOrder,
+      isAnonymousSubmission: item.isAnonymousSubmission,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      createdBy: item.createdByUserSystem
+        ? {
+            publicId: item.createdByUserSystem.publicId,
+            name: item.createdByUserSystem.name
+          }
+        : null
     };
   }
 }

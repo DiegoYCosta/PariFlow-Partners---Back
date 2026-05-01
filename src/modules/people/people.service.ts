@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { EntityTagStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
@@ -13,14 +13,26 @@ type PersonWithCounts = Prisma.PersonGetPayload<{
       select: {
         externalWorks: true;
         links: true;
+        entityTags: true;
       };
     };
+  };
+}>;
+
+type PersonEntityTag = Prisma.EntityTagGetPayload<{
+  include: {
+    createdByUserSystem: true;
   };
 }>;
 
 type PersonWithRelations = Prisma.PersonGetPayload<{
   include: {
     externalWorks: true;
+    entityTags: {
+      include: {
+        createdByUserSystem: true;
+      };
+    };
     links: {
       include: {
         providerCompany: true;
@@ -69,7 +81,8 @@ export class PeopleService {
             _count: {
               select: {
                 externalWorks: true,
-                links: true
+                links: true,
+                entityTags: true
               }
             }
           }
@@ -93,16 +106,19 @@ export class PeopleService {
         where: { publicId },
         include: {
           externalWorks: {
-            orderBy: [
-              { startsAt: 'desc' },
-              { companyName: 'asc' }
-            ]
+            orderBy: [{ startsAt: 'desc' }, { companyName: 'asc' }]
+          },
+          entityTags: {
+            where: {
+              status: EntityTagStatus.ACTIVE
+            },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+            include: {
+              createdByUserSystem: true
+            }
           },
           links: {
-            orderBy: [
-              { startsAt: 'desc' },
-              { id: 'desc' }
-            ],
+            orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
             include: {
               providerCompany: true,
               contract: {
@@ -161,16 +177,19 @@ export class PeopleService {
         },
         include: {
           externalWorks: {
-            orderBy: [
-              { startsAt: 'desc' },
-              { companyName: 'asc' }
-            ]
+            orderBy: [{ startsAt: 'desc' }, { companyName: 'asc' }]
+          },
+          entityTags: {
+            where: {
+              status: EntityTagStatus.ACTIVE
+            },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+            include: {
+              createdByUserSystem: true
+            }
           },
           links: {
-            orderBy: [
-              { startsAt: 'desc' },
-              { id: 'desc' }
-            ],
+            orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
             include: {
               providerCompany: true,
               contract: {
@@ -203,13 +222,14 @@ export class PeopleService {
       phone: item.phone,
       birthDate: item.birthDate,
       linkCount: item._count.links,
-      externalWorkCount: item._count.externalWorks
+      externalWorkCount: item._count.externalWorks,
+      sensitiveTagCount: item._count.entityTags
     };
   }
 
   private mapPersonDetail(item: PersonWithRelations) {
-    // O detalhe ja agrega trabalhos externos e vinculos para o front compor
-    // ficha, historico e futuras ocorrencias sem encadear varias consultas.
+    // O detalhe ja agrega trabalhos externos, tags sensiveis e vinculos para
+    // o front montar ficha mais real sem costurar varias chamadas.
     return {
       publicId: item.publicId,
       name: item.name,
@@ -220,6 +240,7 @@ export class PeopleService {
       birthDate: item.birthDate,
       addressJson: item.addressJson,
       notes: item.notes,
+      entityTags: item.entityTags.map((tag) => this.mapEntityTag(tag)),
       externalWorks: item.externalWorks.map((work) => ({
         publicId: work.publicId,
         companyName: work.companyName,
@@ -263,6 +284,27 @@ export class PeopleService {
             }
           : null
       }))
+    };
+  }
+
+  private mapEntityTag(item: PersonEntityTag) {
+    return {
+      publicId: item.publicId,
+      classification: item.classification,
+      status: item.status,
+      label: item.label,
+      content: item.content,
+      color: item.color,
+      sortOrder: item.sortOrder,
+      isAnonymousSubmission: item.isAnonymousSubmission,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      createdBy: item.createdByUserSystem
+        ? {
+            publicId: item.createdByUserSystem.publicId,
+            name: item.createdByUserSystem.name
+          }
+        : null
     };
   }
 }
