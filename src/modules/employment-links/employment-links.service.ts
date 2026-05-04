@@ -22,6 +22,8 @@ type EmploymentLinkWithRelations = Prisma.EmploymentLinkGetPayload<{
     contract: {
       include: {
         clientCompany: true;
+        contractType: true;
+        contractModel: true;
       };
     };
     position: {
@@ -60,7 +62,9 @@ export class EmploymentLinksService {
             providerCompany: true,
             contract: {
               include: {
-                clientCompany: true
+                clientCompany: true,
+                contractType: true,
+                contractModel: true
               }
             },
             position: {
@@ -392,7 +396,9 @@ export class EmploymentLinksService {
         providerCompany: true,
         contract: {
           include: {
-            clientCompany: true
+            clientCompany: true,
+            contractType: true,
+            contractModel: true
           }
         },
         position: {
@@ -438,6 +444,23 @@ export class EmploymentLinksService {
         status: item.contract.status,
         startsAt: item.contract.startsAt,
         endsAt: item.contract.endsAt,
+        contractType: item.contract.contractType
+          ? {
+              publicId: item.contract.contractType.publicId,
+              name: item.contract.contractType.name,
+              description: item.contract.contractType.description,
+              status: item.contract.contractType.status
+            }
+          : null,
+        contractModel: item.contract.contractModel
+          ? {
+              publicId: item.contract.contractModel.publicId,
+              name: item.contract.contractModel.name,
+              description: item.contract.contractModel.description,
+              defaultSchedule: item.contract.contractModel.defaultSchedule,
+              status: item.contract.contractModel.status
+            }
+          : null,
         clientCompany: {
           publicId: item.contract.clientCompany.publicId,
           name: item.contract.clientCompany.name,

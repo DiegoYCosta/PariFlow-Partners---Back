@@ -34,6 +34,14 @@ const contractInclude = {
       contractType: true
     }
   },
+  positions: {
+    include: {
+      service: true
+    },
+    orderBy: {
+      name: 'asc'
+    }
+  },
   documents: {
     where: {
       status: ContractDocumentStatus.ACTIVE
@@ -631,6 +639,19 @@ export class ContractsService {
       documents: item.documents.map((document) =>
         this.mapContractDocument(document)
       ),
+      positions: item.positions.map((position) => ({
+        publicId: position.publicId,
+        name: position.name,
+        location: position.location,
+        shift: position.shift,
+        schedule: position.schedule,
+        status: position.status,
+        service: {
+          publicId: position.service.publicId,
+          name: position.service.name,
+          category: position.service.category
+        }
+      })),
       providerCompany: item.providerCompany
         ? {
             publicId: item.providerCompany.publicId,
