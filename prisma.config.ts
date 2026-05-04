@@ -14,6 +14,13 @@ if (typeof process.loadEnvFile === 'function') {
 }
 
 import { defineConfig } from 'prisma/config';
+import { buildDatabaseUrlFromEnv } from './src/config/database-url';
+
+const databaseUrl = buildDatabaseUrlFromEnv();
+
+if (databaseUrl && !process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = databaseUrl;
+}
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',

@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { env } from '../../config/env';
+import { databaseUrl } from '../../config/env';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
@@ -16,23 +16,23 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       datasources: {
         db: {
           url:
-            env.DATABASE_URL ??
+            databaseUrl ??
             'mysql://root:root@127.0.0.1:3306/pariflow_partners'
         }
       }
     });
 
-    if (!env.DATABASE_URL) {
+    if (!databaseUrl) {
       this.logger.warn(
-        'DATABASE_URL nao configurada. Endpoints de dominio que usam Prisma retornarao indisponibilidade ate o banco ser configurado.'
+        'DATABASE_URL ou DB_HOST/DB_USER/DB_NAME nao configurados. Endpoints de dominio que usam Prisma retornarao indisponibilidade ate o banco ser configurado.'
       );
     }
   }
 
   assertConfigured(): void {
-    if (!env.DATABASE_URL) {
+    if (!databaseUrl) {
       throw new ServiceUnavailableException(
-        'DATABASE_URL nao configurada para este ambiente.'
+        'Banco de dados nao configurado para este ambiente.'
       );
     }
   }

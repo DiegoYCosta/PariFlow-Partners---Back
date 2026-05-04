@@ -1,5 +1,10 @@
 import { env } from '../../config/env';
 
+function apiAuthCookiePath() {
+  const prefix = env.API_PREFIX.replace(/^\/+|\/+$/g, '');
+  return `/${prefix}/auth`;
+}
+
 export function buildRefreshCookieOptions(): {
   domain?: string;
   httpOnly: true;
@@ -13,7 +18,7 @@ export function buildRefreshCookieOptions(): {
     domain: env.COOKIE_DOMAIN,
     httpOnly: true,
     sameSite: 'lax',
-    path: '/api/v1/auth',
+    path: apiAuthCookiePath(),
     secure: env.COOKIE_SECURE
   };
 }

@@ -15,7 +15,8 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      logger: false
+      logger: false,
+      trustProxy: env.TRUST_PROXY
     })
   );
 
@@ -70,10 +71,10 @@ async function bootstrap() {
   // espelhando o contrato real para reduzir ajuste manual e retrabalho.
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(env.PORT, '0.0.0.0');
+  await app.listen(env.PORT, env.HOST);
 
-  logger.log(`HTTP ativo em http://localhost:${env.PORT}`);
-  logger.log(`Swagger ativo em http://localhost:${env.PORT}/api/docs`);
+  logger.log(`HTTP ativo em http://${env.HOST}:${env.PORT}`);
+  logger.log(`Swagger ativo em http://${env.HOST}:${env.PORT}/api/docs`);
 }
 
 void bootstrap();

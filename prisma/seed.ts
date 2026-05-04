@@ -9,7 +9,7 @@ import {
   SensitiveAudienceGroup
 } from '@prisma/client';
 import { createPublicId } from '../src/common/utils/public-id';
-import { env } from '../src/config/env';
+import { databaseUrl, env } from '../src/config/env';
 
 const prisma = new PrismaClient();
 
@@ -94,9 +94,9 @@ const SERVICE_CATALOG = [
 ];
 
 async function main() {
-  if (!env.DATABASE_URL) {
+  if (!databaseUrl) {
     throw new Error(
-      'DATABASE_URL nao configurada. Configure o banco antes de rodar o seed.'
+      'DATABASE_URL ou DB_HOST/DB_USER/DB_NAME nao configurados. Configure o banco antes de rodar o seed.'
     );
   }
 

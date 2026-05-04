@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { env } from '../../config/env';
+import { databaseUrl, env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 
 @ApiTags('health')
@@ -69,7 +69,7 @@ export class HealthController {
         details: [
           {
             dependency: 'database',
-            status: env.DATABASE_URL ? 'unavailable' : 'not_configured'
+            status: databaseUrl ? 'unavailable' : 'not_configured'
           }
         ]
       });

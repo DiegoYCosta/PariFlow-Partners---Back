@@ -7,7 +7,7 @@ import {
 import { AccessProfileCode, SensitiveAudienceGroup } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { createPublicId } from '../../common/utils/public-id';
-import { env } from '../../config/env';
+import { databaseUrl, env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { FirebaseAdminService } from '../../infra/firebase/firebase-admin.service';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
@@ -117,8 +117,9 @@ export class AuthService {
     firebaseIdToken: string
   ): Promise<SessionIdentity> {
     const canUseDevelopmentBypass =
-      env.NODE_ENV !== 'production' &&
-      (env.DEV_AUTH_BYPASS || !this.firebaseAdminService.isConfigured()) &&
+      ((env.NODE_ENV !== 'production' &&
+        (env.DEV_AUTH_BYPASS || !this.firebaseAdminService.isConfigured())) ||
+        env.PREVIEW_AUTH_BYPASS) &&
       firebaseIdToken === 'dev-token';
 
     if (canUseDevelopmentBypass) {
@@ -157,7 +158,7 @@ export class AuthService {
     capabilities: AuthCapabilities;
     securityContext: AuthTokenPayload['securityContext'];
   }> {
-    if (!env.DATABASE_URL) {
+    if (!databaseUrl) {
       // Esse fallback segura o contrato de auth enquanto banco e Firebase ainda
       // estao fechando, para o front conseguir subir fluxo e validacao basica.
       const isLocalDevelopmentIdentity = identity.firebaseUid === 'firebase-dev-local';

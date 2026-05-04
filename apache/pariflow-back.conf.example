@@ -1,31 +1,21 @@
 <VirtualHost *:80>
-  ServerName painel.exemplo.com
-  Redirect permanent / https://painel.exemplo.com/
-</VirtualHost>
-
-<VirtualHost *:443>
-  ServerName painel.exemplo.com
-
-  SSLEngine on
-  SSLCertificateFile /etc/ssl/certs/painel.crt
-  SSLCertificateKeyFile /etc/ssl/private/painel.key
+  # Troque pelo dominio quando existir. Enquanto estiver sem dominio,
+  # o IP publico da EC2 funciona como ServerName para o primeiro deploy.
+  ServerName 3.18.213.49
 
   ProxyPreserveHost On
-  RequestHeader set X-Forwarded-Proto "https"
-  RequestHeader set X-Forwarded-Port "443"
+  RequestHeader set X-Forwarded-Proto "http"
+  RequestHeader set X-Forwarded-Port "80"
 
-  ProxyPass /api http://127.0.0.1:3000/api
-  ProxyPassReverse /api http://127.0.0.1:3000/api
+  ProxyPass /api http://127.0.0.1:3001/api
+  ProxyPassReverse /api http://127.0.0.1:3001/api
 
-  ProxyPass /health http://127.0.0.1:3000/health
-  ProxyPassReverse /health http://127.0.0.1:3000/health
+  ProxyPass /health http://127.0.0.1:3001/health
+  ProxyPassReverse /health http://127.0.0.1:3001/health
 
-  DocumentRoot /var/www/pariflow-front
+  ProxyPass / http://127.0.0.1:3000/
+  ProxyPassReverse / http://127.0.0.1:3000/
 
-  <Directory /var/www/pariflow-front>
-    Options Indexes FollowSymLinks
-    AllowOverride All
-    Require all granted
-    FallbackResource /index.html
-  </Directory>
+  ErrorLog /var/log/httpd/pariflow-error.log
+  CustomLog /var/log/httpd/pariflow-access.log combined
 </VirtualHost>

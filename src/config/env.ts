@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { buildDatabaseUrlFromEnv } from './database-url';
 
 if (typeof process.loadEnvFile === 'function') {
   try {
@@ -55,6 +56,7 @@ const optionalUrlListFromEnv = z.preprocess((value) => {
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
+  HOST: z.string().min(1).default('0.0.0.0'),
   APP_NAME: z.string().min(1).default('pariflow-back'),
   APP_URL: z.preprocess((value) => {
     if (typeof value === 'string' && value.trim() === '') {
@@ -69,6 +71,11 @@ const environmentSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose'])
     .default('log'),
   DATABASE_URL: optionalStringFromEnv,
+  DB_HOST: optionalStringFromEnv,
+  DB_PORT: z.coerce.number().int().positive().optional(),
+  DB_USER: optionalStringFromEnv,
+  DB_PASSWORD: optionalStringFromEnv,
+  DB_NAME: optionalStringFromEnv,
   JWT_ACCESS_SECRET: z
     .string()
     .min(32)
@@ -82,6 +89,8 @@ const environmentSchema = z.object({
   COOKIE_DOMAIN: optionalStringFromEnv,
   COOKIE_SECURE: booleanFromEnv.default(false),
   DEV_AUTH_BYPASS: booleanFromEnv.default(false),
+  PREVIEW_AUTH_BYPASS: booleanFromEnv.default(false),
+  TRUST_PROXY: booleanFromEnv.default(false),
   FIREBASE_PROJECT_ID: optionalStringFromEnv,
   FIREBASE_CLIENT_EMAIL: optionalStringFromEnv,
   FIREBASE_PRIVATE_KEY: optionalStringFromEnv,
@@ -96,3 +105,8 @@ const environmentSchema = z.object({
 
 export type Env = z.infer<typeof environmentSchema>;
 export const env: Env = environmentSchema.parse(process.env);
+export const databaseUrl = buildDatabaseUrlFromEnv(env);
+
+if (databaseUrl && !process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = databaseUrl;
+}
