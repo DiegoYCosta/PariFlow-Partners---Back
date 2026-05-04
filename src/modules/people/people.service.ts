@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
@@ -6,6 +11,7 @@ import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { CreatePersonDto } from './dto/create-person.dto';
+import { UpdatePersonDto } from './dto/update-person.dto';
 
 type PersonWithCounts = Prisma.PersonGetPayload<{
   include: {
@@ -17,6 +23,25 @@ type PersonWithCounts = Prisma.PersonGetPayload<{
     };
   };
 }>;
+
+const personDetailInclude = {
+  externalWorks: {
+    orderBy: [{ startsAt: 'desc' }, { companyName: 'asc' }]
+  },
+  links: {
+    orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
+    include: {
+      providerCompany: true,
+      contract: {
+        include: {
+          clientCompany: true
+        }
+      },
+      position: true,
+      dismissal: true
+    }
+  }
+} satisfies Prisma.PersonInclude;
 
 type PersonWithRelations = Prisma.PersonGetPayload<{
   include: {
@@ -91,24 +116,7 @@ export class PeopleService {
     try {
       const item = await this.prisma.person.findUnique({
         where: { publicId },
-        include: {
-          externalWorks: {
-            orderBy: [{ startsAt: 'desc' }, { companyName: 'asc' }]
-          },
-          links: {
-            orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
-            include: {
-              providerCompany: true,
-              contract: {
-                include: {
-                  clientCompany: true
-                }
-              },
-              position: true,
-              dismissal: true
-            }
-          }
-        }
+        include: personDetailInclude
       });
 
       if (!item) {
@@ -128,49 +136,8 @@ export class PeopleService {
 
     try {
       const item = await this.prisma.person.create({
-        data: {
-          publicId: createPublicId('pes'),
-          name: dto.name,
-          cpf: dto.cpf ?? null,
-          rg: dto.rg ?? null,
-          email: dto.email ?? null,
-          phone: dto.phone ?? null,
-          birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
-          addressJson: dto.addressJson as Prisma.InputJsonValue | undefined,
-          notes: dto.notes ?? null,
-          externalWorks: dto.externalWorks?.length
-            ? {
-                create: dto.externalWorks.map((work) => ({
-                  publicId: createPublicId('tex'),
-                  companyName: work.companyName,
-                  roleName: work.roleName ?? null,
-                  schedule: work.schedule ?? null,
-                  startsAt: work.startsAt ? new Date(work.startsAt) : null,
-                  endsAt: work.endsAt ? new Date(work.endsAt) : null,
-                  status: work.status ?? null,
-                  notes: work.notes ?? null
-                }))
-              }
-            : undefined
-        },
-        include: {
-          externalWorks: {
-            orderBy: [{ startsAt: 'desc' }, { companyName: 'asc' }]
-          },
-          links: {
-            orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
-            include: {
-              providerCompany: true,
-              contract: {
-                include: {
-                  clientCompany: true
-                }
-              },
-              position: true,
-              dismissal: true
-            }
-          }
-        }
+        data: this.buildPersonCreateData(dto),
+        include: personDetailInclude
       });
 
       return this.mapPersonDetail(item);
@@ -179,6 +146,158 @@ export class PeopleService {
         duplicate: 'Ja existe pessoa cadastrada com este CPF.'
       });
     }
+  }
+
+  async update(publicId: string, dto: UpdatePersonDto) {
+    this.prisma.assertConfigured();
+
+    await this.ensurePersonExists(publicId);
+
+    try {
+      const item = await this.prisma.person.update({
+        where: { publicId },
+        data: {
+          ...this.buildPersonUpdateData(dto),
+          externalWorks:
+            dto.externalWorks === undefined
+              ? undefined
+              : {
+                  deleteMany: {},
+                  create: dto.externalWorks.map((work) => ({
+                    publicId: createPublicId('tex'),
+                    companyName: work.companyName,
+                    roleName: this.nullableText(work.roleName),
+                    schedule: this.nullableText(work.schedule),
+                    startsAt: work.startsAt ? new Date(work.startsAt) : null,
+                    endsAt: work.endsAt ? new Date(work.endsAt) : null,
+                    status: this.nullableText(work.status),
+                    notes: this.nullableText(work.notes)
+                  }))
+                }
+        },
+        include: personDetailInclude
+      });
+
+      return this.mapPersonDetail(item);
+    } catch (error) {
+      rethrowPrismaError(error, {
+        duplicate: 'Ja existe pessoa cadastrada com este CPF.',
+        notFound: 'Pessoa nao encontrada.'
+      });
+    }
+  }
+
+  async remove(publicId: string) {
+    this.prisma.assertConfigured();
+
+    const person = await this.prisma.person.findUnique({
+      where: { publicId },
+      include: {
+        _count: {
+          select: {
+            links: true,
+            occurrences: true,
+            entityTags: true,
+            externalWorks: true
+          }
+        }
+      }
+    });
+
+    if (!person) {
+      throw new NotFoundException('Pessoa nao encontrada.');
+    }
+
+    if (
+      person._count.links > 0 ||
+      person._count.occurrences > 0 ||
+      person._count.entityTags > 0
+    ) {
+      throw new BadRequestException(
+        'Pessoa ja possui vinculos, ocorrencias ou tags e nao pode ser removida fisicamente.'
+      );
+    }
+
+    try {
+      await this.prisma.person.delete({
+        where: { publicId }
+      });
+
+      return {
+        publicId,
+        deleted: true,
+        removedExternalWorkCount: person._count.externalWorks
+      };
+    } catch (error) {
+      rethrowPrismaError(error, {
+        notFound: 'Pessoa nao encontrada.'
+      });
+    }
+  }
+
+  private buildPersonCreateData(dto: CreatePersonDto): Prisma.PersonCreateInput {
+    return {
+      publicId: createPublicId('pes'),
+      name: dto.name,
+      cpf: this.nullableText(dto.cpf),
+      rg: this.nullableText(dto.rg),
+      email: this.nullableText(dto.email),
+      phone: this.nullableText(dto.phone),
+      birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
+      addressJson: dto.addressJson as Prisma.InputJsonValue | undefined,
+      notes: this.nullableText(dto.notes),
+      externalWorks: dto.externalWorks?.length
+        ? {
+            create: dto.externalWorks.map((work) => ({
+              publicId: createPublicId('tex'),
+              companyName: work.companyName,
+              roleName: this.nullableText(work.roleName),
+              schedule: this.nullableText(work.schedule),
+              startsAt: work.startsAt ? new Date(work.startsAt) : null,
+              endsAt: work.endsAt ? new Date(work.endsAt) : null,
+              status: this.nullableText(work.status),
+              notes: this.nullableText(work.notes)
+            }))
+          }
+        : undefined
+    };
+  }
+
+  private buildPersonUpdateData(dto: UpdatePersonDto): Prisma.PersonUpdateInput {
+    return {
+      name: dto.name,
+      cpf: dto.cpf === undefined ? undefined : this.nullableText(dto.cpf),
+      rg: dto.rg === undefined ? undefined : this.nullableText(dto.rg),
+      email: dto.email === undefined ? undefined : this.nullableText(dto.email),
+      phone: dto.phone === undefined ? undefined : this.nullableText(dto.phone),
+      birthDate:
+        dto.birthDate === undefined
+          ? undefined
+          : dto.birthDate
+            ? new Date(dto.birthDate)
+            : null,
+      addressJson:
+        dto.addressJson === undefined
+          ? undefined
+          : (dto.addressJson as Prisma.InputJsonValue),
+      notes: dto.notes === undefined ? undefined : this.nullableText(dto.notes)
+    };
+  }
+
+  private async ensurePersonExists(publicId: string) {
+    const person = await this.prisma.person.findUnique({
+      where: { publicId },
+      select: { id: true }
+    });
+
+    if (!person) {
+      throw new NotFoundException('Pessoa nao encontrada.');
+    }
+  }
+
+  private nullableText(value?: string): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
   }
 
   private mapPersonListItem(item: PersonWithCounts) {
