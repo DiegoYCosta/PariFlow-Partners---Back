@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Param,
   Post,
   Query,
@@ -22,6 +23,7 @@ import { EmploymentLinksService } from './employment-links.service';
 @Controller('vinculos')
 export class EmploymentLinksController {
   constructor(
+    @Inject(EmploymentLinksService)
     private readonly employmentLinksService: EmploymentLinksService
   ) {}
 

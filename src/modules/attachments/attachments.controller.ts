@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -26,7 +27,10 @@ type AuthenticatedRequest = FastifyRequest & {
 @ApiTags('anexos')
 @Controller('anexos')
 export class AttachmentsController {
-  constructor(private readonly attachmentsService: AttachmentsService) {}
+  constructor(
+    @Inject(AttachmentsService)
+    private readonly attachmentsService: AttachmentsService
+  ) {}
 
   @Post('submissions')
   @ApiOperation({

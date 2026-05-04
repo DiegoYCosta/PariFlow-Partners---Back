@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
@@ -12,6 +12,7 @@ import { CreateClientCompanyDto } from './dto/create-client-company.dto';
 @Controller('clientes')
 export class ClientCompaniesController {
   constructor(
+    @Inject(ClientCompaniesService)
     private readonly clientCompaniesService: ClientCompaniesService
   ) {}
 

@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
     "start:dev": "tsx watch src/main.ts",
     "lint": "tsc --noEmit",
     "db:local:setup": "powershell -ExecutionPolicy Bypass -File .\\scripts\\setup-local-mysql.ps1",

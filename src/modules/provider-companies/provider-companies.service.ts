@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
@@ -23,7 +23,7 @@ type ProviderCompanyBase = Prisma.ProviderCompanyGetPayload<Record<string, never
 
 @Injectable()
 export class ProviderCompaniesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async list(query: PaginationQueryDto) {
     this.prisma.assertConfigured();

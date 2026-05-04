@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Inject,
   NotImplementedException,
   UnauthorizedException
 } from '@nestjs/common';
@@ -28,8 +29,11 @@ type SessionUser = SessionIdentity & {
 @Injectable()
 export class AuthService {
   constructor(
+    @Inject(JwtService)
     private readonly jwtService: JwtService,
+    @Inject(FirebaseAdminService)
     private readonly firebaseAdminService: FirebaseAdminService,
+    @Inject(PrismaService)
     private readonly prisma: PrismaService
   ) {}
 
@@ -183,6 +187,33 @@ export class AuthService {
 
     const persistedUser = await this.upsertInternalUser(identity);
     const profiles = await this.loadUserProfiles(persistedUser.id);
+
+    if (
+      env.NODE_ENV !== 'production' &&
+      identity.firebaseUid === 'firebase-dev-local' &&
+      profiles.length === 0
+    ) {
+      const localProfiles = ['admin'];
+      const capabilities = {
+        canViewSensitive: true,
+        canDownloadAttachments: true,
+        canSoftDeleteAttachment: true
+      };
+
+      return {
+        user: {
+          publicId: persistedUser.publicId,
+          firebaseUid: persistedUser.firebaseUid ?? identity.firebaseUid,
+          nome: persistedUser.name,
+          email: persistedUser.email
+        },
+        profiles: localProfiles,
+        audienceGroups: this.resolveAudienceGroupsFromProfileKeys(localProfiles),
+        capabilities,
+        securityContext: 'privileged'
+      };
+    }
+
     const capabilities = this.buildCapabilities(profiles);
     const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
 

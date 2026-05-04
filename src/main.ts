@@ -25,7 +25,7 @@ async function bootstrap() {
   await app.register(helmet as never);
   await app.register(cors as never, {
     credentials: true,
-    origin: env.APP_URL ?? true
+    origin: env.NODE_ENV === 'production' ? env.APP_URL ?? false : true
   });
 
   app.useGlobalPipes(

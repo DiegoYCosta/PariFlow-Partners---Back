@@ -10,16 +10,29 @@ import {
 } from 'class-validator';
 
 export class ListAttachmentsQueryDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'ocr_01hxyzabc123def456ghi789'
   })
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim() : value
   )
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(26)
-  occurrencePublicId!: string;
+  occurrencePublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'pes_01hxyzabc123def456ghi789'
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value
+  )
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(26)
+  personPublicId?: string;
 
   @ApiPropertyOptional({
     enum: AttachmentClassification,

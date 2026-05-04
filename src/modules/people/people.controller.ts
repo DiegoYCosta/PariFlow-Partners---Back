@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
@@ -11,7 +11,9 @@ import { PeopleService } from './people.service';
 @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
 @Controller('pessoas')
 export class PeopleController {
-  constructor(private readonly peopleService: PeopleService) {}
+  constructor(
+    @Inject(PeopleService) private readonly peopleService: PeopleService
+  ) {}
 
   @Get()
   @ApiOperation({

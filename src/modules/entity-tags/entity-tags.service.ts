@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException
@@ -37,7 +38,7 @@ type EntityTagWithRelations = Prisma.EntityTagGetPayload<{
 
 @Injectable()
 export class EntityTagsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async createSubmission(dto: CreateEntityTagSubmissionDto) {
     this.prisma.assertConfigured();

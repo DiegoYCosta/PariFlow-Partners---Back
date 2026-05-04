@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
@@ -11,7 +11,10 @@ import { CreateContractDto } from './dto/create-contract.dto';
 @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
 @Controller('contratos')
 export class ContractsController {
-  constructor(private readonly contractsService: ContractsService) {}
+  constructor(
+    @Inject(ContractsService)
+    private readonly contractsService: ContractsService
+  ) {}
 
   @Get()
   @ApiOperation({

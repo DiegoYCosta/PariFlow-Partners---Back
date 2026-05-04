@@ -7,8 +7,13 @@ export type PaginationArgs = {
 };
 
 export function buildPaginationArgs(query: PaginationQueryDto): PaginationArgs {
-  const page = query.page ?? 1;
-  const perPage = query.perPage ?? 20;
+  const rawPage = Number(query.page ?? 1);
+  const rawPerPage = Number(query.perPage ?? 20);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const perPage =
+    Number.isFinite(rawPerPage) && rawPerPage >= 1
+      ? Math.min(rawPerPage, 100)
+      : 20;
 
   return {
     page,

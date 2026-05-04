@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -26,7 +27,10 @@ type AuthenticatedRequest = FastifyRequest & {
 @ApiTags('tags-entidade')
 @Controller('tags-entidade')
 export class EntityTagsController {
-  constructor(private readonly entityTagsService: EntityTagsService) {}
+  constructor(
+    @Inject(EntityTagsService)
+    private readonly entityTagsService: EntityTagsService
+  ) {}
 
   @Post('submissions')
   @ApiOperation({

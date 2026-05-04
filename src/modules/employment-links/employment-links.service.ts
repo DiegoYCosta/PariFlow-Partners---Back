@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
@@ -35,7 +36,7 @@ type EmploymentLinkWithRelations = Prisma.EmploymentLinkGetPayload<{
 
 @Injectable()
 export class EmploymentLinksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async list(query: ListEmploymentLinksQueryDto) {
     this.prisma.assertConfigured();

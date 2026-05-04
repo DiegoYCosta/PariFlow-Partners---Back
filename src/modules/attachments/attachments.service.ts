@@ -5,7 +5,9 @@ import {
   SensitiveAudienceGroup
 } from '@prisma/client';
 import {
+  BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException
@@ -34,7 +36,7 @@ type AttachmentWithRelations = Prisma.AttachmentGetPayload<{
 
 @Injectable()
 export class AttachmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async createSubmission(dto: CreateAttachmentSubmissionDto) {
     this.prisma.assertConfigured();
@@ -141,12 +143,12 @@ export class AttachmentsService {
   async list(query: ListAttachmentsQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const occurrenceId = await this.resolveOccurrenceId(query.occurrencePublicId);
+    const targetWhere = await this.buildListTargetWhere(query);
 
     try {
       const items = await this.prisma.attachment.findMany({
         where: {
-          occurrenceId,
+          ...targetWhere,
           status: AttachmentStatus.ACTIVE,
           classification: query.classification,
           AND: [this.buildVisibilityWhere(actor)]
@@ -288,6 +290,32 @@ export class AttachmentsService {
     }
   }
 
+  private async buildListTargetWhere(
+    query: ListAttachmentsQueryDto
+  ): Promise<Prisma.AttachmentWhereInput> {
+    if (!query.occurrencePublicId && !query.personPublicId) {
+      throw new BadRequestException(
+        'Informe occurrencePublicId ou personPublicId para listar anexos.'
+      );
+    }
+
+    const where: Prisma.AttachmentWhereInput = {};
+
+    if (query.occurrencePublicId) {
+      where.occurrenceId = await this.resolveOccurrenceId(
+        query.occurrencePublicId
+      );
+    }
+
+    if (query.personPublicId) {
+      where.occurrence = {
+        personId: await this.resolvePersonId(query.personPublicId)
+      };
+    }
+
+    return where;
+  }
+
   private async resolveOccurrenceId(publicId: string): Promise<bigint> {
     const occurrence = await this.prisma.occurrence.findUnique({
       where: { publicId },
@@ -299,6 +327,19 @@ export class AttachmentsService {
     }
 
     return occurrence.id;
+  }
+
+  private async resolvePersonId(publicId: string): Promise<bigint> {
+    const person = await this.prisma.person.findUnique({
+      where: { publicId },
+      select: { id: true }
+    });
+
+    if (!person) {
+      throw new NotFoundException('Pessoa alvo dos anexos nao foi encontrada.');
+    }
+
+    return person.id;
   }
 
   private async ensureActiveAttachmentWithRelations(

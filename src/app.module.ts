@@ -19,6 +19,7 @@ import { ProviderCompaniesModule } from './modules/provider-companies/provider-c
     ClientCompaniesModule,
     ContractsModule,
     EntityTagsModule,
+    AttachmentsModule,
     PeopleModule,
     EmploymentLinksModule
   ]
