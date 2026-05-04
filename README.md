@@ -19,6 +19,27 @@ Base do backend do PariFlow Partners, alinhada ao plano em `docs/preparacao-back
 - Firebase Admin
 - Swagger/OpenAPI
 
+## Materiais de seguranca para AWS
+
+Os materiais de seguranca do primeiro deploy ficam neste repositorio porque a
+maior parte dos controles reais esta no backend, no Apache, no PM2, no MySQL e
+nas variaveis de ambiente.
+
+- [Checklist AWS de seguranca](docs/aws-security-checklist.md)
+- [Apache reverse proxy com headers de seguranca](apache/pariflow-back.conf.example)
+- `.env.aws*` fica ignorado pelo Git; use `.env.aws.preview` local para homologacao por IP e copie para `.env` na EC2.
+- `scripts/smoke-aws-security.sh`: smoke test de health, auth, rotas protegidas e headers.
+
+O front so precisa de ajuste de seguranca se a API ficar em outro host. Nesse
+caso, buildar o Flutter com:
+
+```bash
+flutter build web --release --dart-define=PARIFLOW_API_BASE_URL=https://seu-dominio/api/v1
+```
+
+No modo preferencial, Apache serve front e API no mesmo host, entao o front usa
+`/api/v1` automaticamente em build release.
+
 ## O que ja existe
 
 - bootstrap do backend com `api/v1`

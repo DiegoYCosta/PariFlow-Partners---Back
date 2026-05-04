@@ -1,4 +1,5 @@
 <VirtualHost *:80>
+  # Requer mod_proxy, mod_proxy_http, mod_headers e mod_rewrite.
   # Troque pelo dominio quando existir. Enquanto estiver sem dominio,
   # o IP publico da EC2 funciona como ServerName para o primeiro deploy.
   ServerName 3.18.213.49
@@ -7,13 +8,30 @@
   RequestHeader set X-Forwarded-Proto "http"
   RequestHeader set X-Forwarded-Port "80"
 
-  ProxyPass /api http://127.0.0.1:3001/api
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+  # Ative apenas quando estiver servindo por HTTPS.
+  # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+  <LocationMatch "^/\.">
+    Require all denied
+  </LocationMatch>
+
+  # Para producao publica, restrinja o Swagger por IP ou remova o proxy.
+  # <Location "/api/docs">
+  #   Require ip <seu-ip-publico>
+  # </Location>
+
+  ProxyPass /api http://127.0.0.1:3001/api retry=0 timeout=60
   ProxyPassReverse /api http://127.0.0.1:3001/api
 
-  ProxyPass /health http://127.0.0.1:3001/health
+  ProxyPass /health http://127.0.0.1:3001/health retry=0 timeout=15
   ProxyPassReverse /health http://127.0.0.1:3001/health
 
-  ProxyPass / http://127.0.0.1:3000/
+  ProxyPass / http://127.0.0.1:3000/ retry=0 timeout=60
   ProxyPassReverse / http://127.0.0.1:3000/
 
   ErrorLog /var/log/httpd/pariflow-error.log

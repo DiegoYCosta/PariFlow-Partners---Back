@@ -33,6 +33,8 @@ pids/
 .env.*
 !.env.example
 !.env*.example
+# AWS deploy env files stay local because they can contain real infra data.
+.env.aws*
 .envrc
 .local/
 firebase-adminsdk-*.json
