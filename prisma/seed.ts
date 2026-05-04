@@ -1,6 +1,7 @@
 import {
   AccessProfileCode,
   AttachmentClassification,
+  ContractCatalogStatus,
   EntityTagClassification,
   OccurrenceNature,
   OccurrenceVisibility,
@@ -227,11 +228,137 @@ async function main() {
       }
     });
 
+    const contractType = await prisma.contractType.upsert({
+      where: { publicId: 'tco_seed_contratacao' },
+      update: {
+        name: 'Contratacao',
+        description:
+          'Tipo base para contratos de prestacao ou contratacao operacional.',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'tco_seed_contratacao',
+        name: 'Contratacao',
+        description:
+          'Tipo base para contratos de prestacao ou contratacao operacional.',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
+    await prisma.contractType.upsert({
+      where: { publicId: 'tco_seed_locacao' },
+      update: {
+        name: 'Locacao',
+        description: 'Tipo base para contratos de locacao.',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'tco_seed_locacao',
+        name: 'Locacao',
+        description: 'Tipo base para contratos de locacao.',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
+    await prisma.contractType.upsert({
+      where: { publicId: 'tco_seed_demissao' },
+      update: {
+        name: 'Demissao',
+        description:
+          'Tipo base para documentos e contratos ligados a desligamento.',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'tco_seed_demissao',
+        name: 'Demissao',
+        description:
+          'Tipo base para documentos e contratos ligados a desligamento.',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
+    await prisma.contractModel.upsert({
+      where: {
+        contractTypeId_name: {
+          contractTypeId: contractType.id,
+          name: 'Limpeza 12x36'
+        }
+      },
+      update: {
+        publicId: 'mco_seed_limpeza_12x36',
+        description:
+          'Modelo reutilizavel de contrato para escala de limpeza 12x36.',
+        defaultSchedule: '12x36',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'mco_seed_limpeza_12x36',
+        contractTypeId: contractType.id,
+        name: 'Limpeza 12x36',
+        description:
+          'Modelo reutilizavel de contrato para escala de limpeza 12x36.',
+        defaultSchedule: '12x36',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
+    await prisma.contractModel.upsert({
+      where: {
+        contractTypeId_name: {
+          contractTypeId: contractType.id,
+          name: 'Limpeza 22hrs semanais'
+        }
+      },
+      update: {
+        publicId: 'mco_seed_limpeza_22h',
+        description:
+          'Modelo reutilizavel de contrato para limpeza parcial semanal.',
+        defaultSchedule: '22hrs semanais',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'mco_seed_limpeza_22h',
+        contractTypeId: contractType.id,
+        name: 'Limpeza 22hrs semanais',
+        description:
+          'Modelo reutilizavel de contrato para limpeza parcial semanal.',
+        defaultSchedule: '22hrs semanais',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
+    const contractModel = await prisma.contractModel.upsert({
+      where: {
+        contractTypeId_name: {
+          contractTypeId: contractType.id,
+          name: 'Portaria 12x36'
+        }
+      },
+      update: {
+        publicId: 'mco_seed_portaria_12x36',
+        description:
+          'Modelo reutilizavel de contrato para cobertura de portaria 12x36.',
+        defaultSchedule: '12x36',
+        status: ContractCatalogStatus.ACTIVE
+      },
+      create: {
+        publicId: 'mco_seed_portaria_12x36',
+        contractTypeId: contractType.id,
+        name: 'Portaria 12x36',
+        description:
+          'Modelo reutilizavel de contrato para cobertura de portaria 12x36.',
+        defaultSchedule: '12x36',
+        status: ContractCatalogStatus.ACTIVE
+      }
+    });
+
     const contract = await prisma.contract.upsert({
       where: { publicId: 'ctr_seed_base' },
       update: {
         providerCompanyId: providerCompany.id,
         clientCompanyId: clientCompany.id,
+        contractTypeId: contractType.id,
+        contractModelId: contractModel.id,
         startsAt: new Date('2026-01-01T00:00:00.000Z'),
         endsAt: null,
         status: 'ACTIVE',
@@ -241,10 +368,39 @@ async function main() {
         publicId: 'ctr_seed_base',
         providerCompanyId: providerCompany.id,
         clientCompanyId: clientCompany.id,
+        contractTypeId: contractType.id,
+        contractModelId: contractModel.id,
         startsAt: new Date('2026-01-01T00:00:00.000Z'),
         endsAt: null,
         status: 'ACTIVE',
         notes: 'Contrato de exemplo para desenvolvimento.'
+      }
+    });
+
+    await prisma.contractDocument.upsert({
+      where: { publicId: 'cdo_seed_contrato_assinado' },
+      update: {
+        contractId: contract.id,
+        title: 'Contrato assinado',
+        classification: AttachmentClassification.FORMAL_DOCUMENT,
+        fileName: 'contrato-assinado-seed.pdf',
+        mimeType: 'application/pdf',
+        externalLink: 'https://example.com/contrato-assinado-seed.pdf',
+        physicalLocation: null,
+        notes:
+          'Documento seedado para validar anexos e links na tela de contratos.'
+      },
+      create: {
+        publicId: 'cdo_seed_contrato_assinado',
+        contractId: contract.id,
+        title: 'Contrato assinado',
+        classification: AttachmentClassification.FORMAL_DOCUMENT,
+        fileName: 'contrato-assinado-seed.pdf',
+        mimeType: 'application/pdf',
+        externalLink: 'https://example.com/contrato-assinado-seed.pdf',
+        physicalLocation: null,
+        notes:
+          'Documento seedado para validar anexos e links na tela de contratos.'
       }
     });
 

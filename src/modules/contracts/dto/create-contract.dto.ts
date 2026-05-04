@@ -18,6 +18,26 @@ export class CreateContractDto {
   @IsNotEmpty()
   clientCompanyPublicId!: string;
 
+  @ApiPropertyOptional({
+    example: 'tco_01hxyz...',
+    description:
+      'Tipo de contrato. Se omitido, o backend usa o tipo base ativo para preservar compatibilidade.'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  contractTypePublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'mco_01hxyz...',
+    description:
+      'Modelo reutilizavel do contrato, como Limpeza 12x36 ou Portaria 12x36. Reutilizar o mesmo modelo nao cria relacao entre empresas.'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  contractModelPublicId?: string;
+
   @ApiProperty({
     example: '2026-04-27T00:00:00.000Z',
     description: 'Data em ISO 8601. Fuso e exibicao local ficam na camada de interface.'
