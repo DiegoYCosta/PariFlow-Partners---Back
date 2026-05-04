@@ -1,4 +1,12 @@
-import { PrismaClient, AccessProfileCode } from '@prisma/client';
+import {
+  AccessProfileCode,
+  AttachmentClassification,
+  EntityTagClassification,
+  OccurrenceNature,
+  OccurrenceVisibility,
+  PrismaClient,
+  SensitiveAudienceGroup
+} from '@prisma/client';
 import { createPublicId } from '../src/common/utils/public-id';
 import { env } from '../src/config/env';
 
@@ -372,9 +380,176 @@ async function main() {
         notes: 'Movimentacao inicial do vinculo de exemplo.'
       }
     });
+
+    const sensitiveOwner = await ensureSeedSensitiveOwner();
+
+    const occurrence = await prisma.occurrence.upsert({
+      where: { publicId: 'ocr_seed_people_sensitive' },
+      update: {
+        personId: person.id,
+        providerCompanyId: providerCompany.id,
+        employmentLinkId: employmentLink.id,
+        positionId: position.id,
+        type: 'OBSERVACAO_OPERACIONAL',
+        scope: 'PEOPLE_PROFILE',
+        nature: OccurrenceNature.NEUTRAL,
+        title: 'Observacao operacional para validacao da ficha',
+        description:
+          'Ocorrencia seedada para validar tags sensiveis e anexos protegidos no corte vertical de People.',
+        occurredAt: new Date('2026-04-15T10:00:00.000Z'),
+        severityLevel: 'LOW',
+        visibility: OccurrenceVisibility.SENSITIVE,
+        showInExecutivePanel: true,
+        status: 'ACTIVE'
+      },
+      create: {
+        publicId: 'ocr_seed_people_sensitive',
+        personId: person.id,
+        providerCompanyId: providerCompany.id,
+        employmentLinkId: employmentLink.id,
+        positionId: position.id,
+        type: 'OBSERVACAO_OPERACIONAL',
+        scope: 'PEOPLE_PROFILE',
+        nature: OccurrenceNature.NEUTRAL,
+        title: 'Observacao operacional para validacao da ficha',
+        description:
+          'Ocorrencia seedada para validar tags sensiveis e anexos protegidos no corte vertical de People.',
+        occurredAt: new Date('2026-04-15T10:00:00.000Z'),
+        severityLevel: 'LOW',
+        visibility: OccurrenceVisibility.SENSITIVE,
+        showInExecutivePanel: true,
+        status: 'ACTIVE'
+      }
+    });
+
+    await prisma.entityTag.upsert({
+      where: { publicId: 'tag_seed_people_sensitive' },
+      update: {
+        targetType: 'PERSON',
+        personId: person.id,
+        providerCompanyId: null,
+        classification: EntityTagClassification.ROUTINE_CONTEXT,
+        status: 'ACTIVE',
+        label: 'prefere troca avisada',
+        content:
+          'Validacao real de tag sensivel: comunicar mudanca de escala com antecedencia quando possivel.',
+        color: '#0F766E',
+        sortOrder: 1,
+        isAnonymousSubmission: false,
+        ownerUserSystemId: sensitiveOwner.id,
+        createdByUserSystemId: sensitiveOwner.id,
+        removedByUserSystemId: null,
+        removedAt: null,
+        audienceGroups: {
+          deleteMany: {},
+          create: [
+            { groupKey: SensitiveAudienceGroup.DIRECTOR },
+            { groupKey: SensitiveAudienceGroup.SUPERVISION }
+          ]
+        },
+        audienceUsers: {
+          deleteMany: {}
+        }
+      },
+      create: {
+        publicId: 'tag_seed_people_sensitive',
+        targetType: 'PERSON',
+        personId: person.id,
+        classification: EntityTagClassification.ROUTINE_CONTEXT,
+        status: 'ACTIVE',
+        label: 'prefere troca avisada',
+        content:
+          'Validacao real de tag sensivel: comunicar mudanca de escala com antecedencia quando possivel.',
+        color: '#0F766E',
+        sortOrder: 1,
+        isAnonymousSubmission: false,
+        ownerUserSystemId: sensitiveOwner.id,
+        createdByUserSystemId: sensitiveOwner.id,
+        audienceGroups: {
+          create: [
+            { groupKey: SensitiveAudienceGroup.DIRECTOR },
+            { groupKey: SensitiveAudienceGroup.SUPERVISION }
+          ]
+        }
+      }
+    });
+
+    await prisma.attachment.upsert({
+      where: { publicId: 'anx_seed_people_sensitive' },
+      update: {
+        occurrenceId: occurrence.id,
+        ownerUserSystemId: sensitiveOwner.id,
+        createdByUserSystemId: sensitiveOwner.id,
+        displayScope: 'people_profile',
+        classification: AttachmentClassification.SENSITIVE_ATTACHMENT,
+        fileName: 'relato-operacional-seed.pdf',
+        mimeType: 'application/pdf',
+        storagePath: 'seed/people/relato-operacional-seed.pdf',
+        externalLink: null,
+        physicalLocation: null,
+        visibleInExecutive: true,
+        visibleInContext: true,
+        requiresConfirmation: true,
+        version: 1,
+        status: 'ACTIVE',
+        deletedAt: null,
+        deleteReason: null,
+        audienceGroups: {
+          deleteMany: {},
+          create: [
+            { groupKey: SensitiveAudienceGroup.DIRECTOR },
+            { groupKey: SensitiveAudienceGroup.SUPERVISION }
+          ]
+        },
+        audienceUsers: {
+          deleteMany: {}
+        }
+      },
+      create: {
+        publicId: 'anx_seed_people_sensitive',
+        occurrenceId: occurrence.id,
+        ownerUserSystemId: sensitiveOwner.id,
+        createdByUserSystemId: sensitiveOwner.id,
+        displayScope: 'people_profile',
+        classification: AttachmentClassification.SENSITIVE_ATTACHMENT,
+        fileName: 'relato-operacional-seed.pdf',
+        mimeType: 'application/pdf',
+        storagePath: 'seed/people/relato-operacional-seed.pdf',
+        visibleInExecutive: true,
+        visibleInContext: true,
+        requiresConfirmation: true,
+        version: 1,
+        status: 'ACTIVE',
+        audienceGroups: {
+          create: [
+            { groupKey: SensitiveAudienceGroup.DIRECTOR },
+            { groupKey: SensitiveAudienceGroup.SUPERVISION }
+          ]
+        }
+      }
+    });
   }
 
   console.log('Seed finalizado com sucesso.');
+}
+
+async function ensureSeedSensitiveOwner() {
+  return prisma.userSystem.upsert({
+    where: { email: 'seed.admin@pariflow.local' },
+    update: {
+      publicId: 'usr_seed_admin',
+      name: 'Seed Admin',
+      status: 'ACTIVE',
+      mfaEnabled: false
+    },
+    create: {
+      publicId: 'usr_seed_admin',
+      name: 'Seed Admin',
+      email: 'seed.admin@pariflow.local',
+      status: 'ACTIVE',
+      mfaEnabled: false
+    }
+  });
 }
 
 main()
