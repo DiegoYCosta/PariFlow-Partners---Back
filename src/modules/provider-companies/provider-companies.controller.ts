@@ -1,9 +1,21 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from '../auth/guards/privileged-access.guard';
 import { CreateProviderCompanyDto } from './dto/create-provider-company.dto';
+import { UpdateProviderCompanyDto } from './dto/update-provider-company.dto';
 import { ProviderCompaniesService } from './provider-companies.service';
 
 @ApiTags('empresas-prestadoras')
@@ -40,5 +52,24 @@ export class ProviderCompaniesController {
   })
   create(@Body() dto: CreateProviderCompanyDto) {
     return this.providerCompaniesService.create(dto);
+  }
+
+  @Patch(':publicId')
+  @ApiOperation({
+    summary: 'Atualiza uma empresa prestadora.'
+  })
+  update(
+    @Param('publicId') publicId: string,
+    @Body() dto: UpdateProviderCompanyDto
+  ) {
+    return this.providerCompaniesService.update(publicId, dto);
+  }
+
+  @Delete(':publicId')
+  @ApiOperation({
+    summary: 'Inativa uma empresa prestadora sem apagar historico.'
+  })
+  remove(@Param('publicId') publicId: string) {
+    return this.providerCompaniesService.remove(publicId);
   }
 }

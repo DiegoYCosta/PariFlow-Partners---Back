@@ -6,6 +6,7 @@ import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { CreateClientCompanyDto } from './dto/create-client-company.dto';
+import { UpdateClientCompanyDto } from './dto/update-client-company.dto';
 
 @Injectable()
 export class ClientCompaniesService {
@@ -88,6 +89,55 @@ export class ClientCompaniesService {
     } catch (error) {
       rethrowPrismaError(error, {
         duplicate: 'Ja existe cliente contratante com este documento.'
+      });
+    }
+  }
+
+  async update(publicId: string, dto: UpdateClientCompanyDto) {
+    this.prisma.assertConfigured();
+
+    try {
+      const item = await this.prisma.clientCompany.update({
+        where: { publicId },
+        data: {
+          name: dto.name?.trim(),
+          document:
+            dto.document === undefined ? undefined : dto.document.trim() || null,
+          clientType: dto.clientType?.trim(),
+          addressJson:
+            dto.addressJson === undefined
+              ? undefined
+              : (dto.addressJson as Prisma.InputJsonValue),
+          contactName:
+            dto.contactName === undefined
+              ? undefined
+              : dto.contactName.trim() || null,
+          status: dto.status?.trim()
+        }
+      });
+
+      return this.mapClientCompany(item);
+    } catch (error) {
+      rethrowPrismaError(error, {
+        duplicate: 'Ja existe cliente contratante com este documento.',
+        notFound: 'Cliente contratante nao encontrado.'
+      });
+    }
+  }
+
+  async remove(publicId: string) {
+    this.prisma.assertConfigured();
+
+    try {
+      const item = await this.prisma.clientCompany.update({
+        where: { publicId },
+        data: { status: 'INACTIVE' }
+      });
+
+      return this.mapClientCompany(item);
+    } catch (error) {
+      rethrowPrismaError(error, {
+        notFound: 'Cliente contratante nao encontrado.'
       });
     }
   }

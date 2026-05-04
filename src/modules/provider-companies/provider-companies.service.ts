@@ -6,6 +6,7 @@ import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { CreateProviderCompanyDto } from './dto/create-provider-company.dto';
+import { UpdateProviderCompanyDto } from './dto/update-provider-company.dto';
 
 type ProviderCompanyWithCounts = Prisma.ProviderCompanyGetPayload<{
   include: {
@@ -110,6 +111,52 @@ export class ProviderCompaniesService {
     } catch (error) {
       rethrowPrismaError(error, {
         duplicate: 'Ja existe empresa prestadora com este documento.'
+      });
+    }
+  }
+
+  async update(publicId: string, dto: UpdateProviderCompanyDto) {
+    this.prisma.assertConfigured();
+
+    try {
+      const item = await this.prisma.providerCompany.update({
+        where: { publicId },
+        data: {
+          legalName: dto.legalName?.trim(),
+          tradeName:
+            dto.tradeName === undefined ? undefined : dto.tradeName.trim() || null,
+          document: dto.document?.trim(),
+          status: dto.status?.trim(),
+          contactsJson:
+            dto.contactsJson === undefined
+              ? undefined
+              : (dto.contactsJson as Prisma.InputJsonValue),
+          notes: dto.notes === undefined ? undefined : dto.notes.trim() || null
+        }
+      });
+
+      return this.mapProviderCompany(item);
+    } catch (error) {
+      rethrowPrismaError(error, {
+        duplicate: 'Ja existe empresa prestadora com este documento.',
+        notFound: 'Empresa prestadora nao encontrada.'
+      });
+    }
+  }
+
+  async remove(publicId: string) {
+    this.prisma.assertConfigured();
+
+    try {
+      const item = await this.prisma.providerCompany.update({
+        where: { publicId },
+        data: { status: 'INACTIVE' }
+      });
+
+      return this.mapProviderCompany(item);
+    } catch (error) {
+      rethrowPrismaError(error, {
+        notFound: 'Empresa prestadora nao encontrada.'
       });
     }
   }
