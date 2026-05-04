@@ -17,8 +17,8 @@ Ocorrencias e CRUDs mestre como ausentes.
 | Catalogo contratual | tipos, modelos, servicos, postos e documentos ativos |
 | People | pessoas, vinculos, ocorrencias, tags e anexos ativos |
 | Network | `GET /api/v1/network/graph` ativo |
-| AWS | materiais de seguranca, Apache e PM2 preparados |
-| Firebase runtime | pendente no front |
+| AWS | homologacao por IP ativa com Apache, PM2 e MySQL local |
+| Firebase runtime | Web inicializado no front; login por e-mail/senha ativo |
 | Refresh/logout/step-up | parcial/reservado |
 | Storage/download protegido | pendente |
 | Auditoria/relatorios | pendente |
@@ -28,6 +28,12 @@ Ocorrencias e CRUDs mestre como ausentes.
 - Backend continua `API-first`.
 - Front usa `publicId`, nunca ID interno.
 - ACL, permissao e conteudo sensivel sao decididos no backend.
+- Service Account Firebase, JWT secrets, senha de banco e chaves AWS ficam
+  somente em `.env`/infra do backend, nunca no front.
+- O script `scripts/apply-firebase-admin-env.ps1` importa Service Account para
+  `.env` sem exibir private key.
+- O script `npm run user:grant-admin -- --email ... --firebaseUid ...` garante
+  perfil ADMIN para usuarios reais do Firebase.
 - Apache deve expor apenas `/`, `/api` e `/health`.
 - MySQL deve ficar em `127.0.0.1`.
 - `.env` real nao entra no Git.
@@ -43,20 +49,21 @@ O front ja consome a API real para:
 - anexos;
 - Network.
 
-Durante preview privado, o front ainda troca sessao com `dev-token`. Portanto,
-homologacao por IP usa `PREVIEW_AUTH_BYPASS=true`. Producao publica exige
-Firebase Admin configurado e bypass desligado.
+Durante preview privado, o front inicializa Firebase Web, exibe login por
+e-mail/senha e usa token Firebase real quando houver usuario logado. Enquanto
+usuarios reais e Admin SDK nao estiverem fechados, ele ainda pode trocar sessao
+com `dev-token` se o build permitir `PARIFLOW_ENABLE_DEV_TOKEN=true`.
+Portanto, homologacao por IP usa `PREVIEW_AUTH_BYPASS=true`. Producao publica
+exige Firebase Admin configurado, build com `PARIFLOW_ENABLE_DEV_TOKEN=false`
+e bypass desligado.
 
 ## Roadmap Real
 
 ### Fase 1. Homologacao AWS
 
-- copiar `.env.aws.preview` local como `.env` na EC2;
-- rodar `npm install`, `npm run build`, `npm run prisma:migrate:deploy` e seed;
-- iniciar API com PM2;
-- iniciar front Flutter Web com PM2/serve;
-- configurar Apache;
-- rodar `scripts/smoke-aws-security.sh`.
+Concluida em preview por IP. Apache serve o Flutter estatico em `/`, encaminha
+`/api` e `/health` para o backend, PM2 mantem a API e MySQL escuta em
+`127.0.0.1`.
 
 ### Fase 2. Validacao com Dados Reais
 
@@ -67,8 +74,9 @@ Firebase Admin configurado e bypass desligado.
 
 ### Fase 3. Auth de Producao
 
-- implementar login Firebase no Flutter;
+- habilitar Email/Password e criar usuarios reais no Firebase;
 - preencher Firebase Admin no `.env` da EC2;
+- buildar o front com `PARIFLOW_ENABLE_DEV_TOKEN=false`;
 - desligar `PREVIEW_AUTH_BYPASS`;
 - implementar refresh/logout.
 

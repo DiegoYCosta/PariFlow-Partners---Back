@@ -40,6 +40,10 @@ Arquivos `.env.aws*` ficam ignorados pelo Git. O arquivo local
 `.env.aws.preview` pode ser usado como base para copiar o `.env` da EC2 na
 homologacao privada por IP.
 
+Credenciais Firebase Admin, JWT secrets, senha de banco, chaves AWS e arquivos
+de service account pertencem somente ao backend/infra. Nao copiar esses valores
+para o front e nao versionar `.env` real.
+
 O front so precisa de ajuste se a API ficar em outro host:
 
 ```bash
@@ -104,8 +108,8 @@ host.
 
 ## Pendencias Reais
 
-1. Executar homologacao AWS com `.env` real, migrations, seed, PM2 e Apache.
-2. Trocar preview auth por Firebase real no front e manter
+1. Validar CRUDs e Network na homologacao AWS atual com dados reais.
+2. Habilitar Email/Password, criar usuarios reais e trocar preview auth por Firebase real, mantendo
    `PREVIEW_AUTH_BYPASS=false` em producao publica.
 3. Completar refresh/logout/sensitive-session.
 4. Ligar storage privado, download rastreavel e step-up para anexos sensiveis.

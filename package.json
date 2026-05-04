@@ -19,7 +19,8 @@
     "prisma:migrate:status": "prisma migrate status",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "user:grant-admin": "tsx scripts/grant-admin-profile.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^10.0.1",
