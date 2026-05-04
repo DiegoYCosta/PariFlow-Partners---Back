@@ -1,6 +1,14 @@
-# PariFlow Partners Back
+﻿# PariFlow Partners Back
 
-Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-backend-e-integracao-front.md](docs/preparacao-backend-e-integracao-front.md).
+Base do backend do PariFlow Partners, alinhada ao plano em `docs/preparacao-backend-e-integracao-front.md`.
+
+## Leitura correta em `2026-05-02`
+
+- o backend ja nao esta apenas em scaffolding;
+- `auth/session/exchange` e `auth/me` ja estao ativos;
+- os modulos de empresas prestadoras, clientes, contratos, pessoas, vinculos, tags de entidade e anexos ja existem;
+- o front atual ja possui shell CRM, workspace de `People` e preview funcional de `Network`;
+- os principais itens realmente abertos agora sao `refresh/logout/sensitive session`, `GET /network/graph`, ocorrencias, auditoria, relatorios e o ciclo final de storage/download protegido.
 
 ## Stack
 
@@ -17,6 +25,7 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 - `GET /health`
 - `POST /api/v1/auth/session/exchange`
 - `GET /api/v1/auth/me`
+- `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` e rotas de `sensitive-session` ja expostas como trilha parcial/reservada
 - `GET/POST /api/v1/empresas-prestadoras`
 - `GET/POST /api/v1/clientes`
 - `GET/POST /api/v1/contratos`
@@ -24,18 +33,90 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 - `GET/POST /api/v1/vinculos`
 - `POST /api/v1/vinculos/:publicId/movimentacoes`
 - `POST /api/v1/vinculos/:publicId/desligamento`
+- `POST /api/v1/tags-entidade/submissions`
+- `GET/POST/PATCH/DELETE /api/v1/tags-entidade`
+- `POST /api/v1/anexos/submissions`
+- `GET/POST/PATCH/DELETE /api/v1/anexos`
 - filtro global de erros no formato padrao da API
 - interceptor global que envelopa respostas com `traceId`
 - `PrismaService` global e schema Prisma inicial
 - exemplo de configuracao Apache e PM2
 
-## O que ainda e proximo passo
+## O que continua aberto de verdade
 
-- persistir `usuario_sistema`, `perfil_acesso` e `refresh_tokens`
-- implementar `refresh`, `logout` e `sensitive session`
-- criar os proximos modulos de dominio: ocorrencias, anexos e recebimentos
-- ligar storage privado para anexos
-- expandir as proximas migracoes e seeds dos modulos restantes
+- persistir o ciclo final de `usuario_sistema`, `perfil_acesso` e `refresh_tokens`
+- concluir o runtime de `refresh`, `logout` e `sensitive session`
+- ligar storage privado, download protegido e step-up para anexos sensiveis
+- criar os modulos de ocorrencias, auditoria e relatorios
+- publicar o endpoint canonico `GET /network/graph`
+- expandir migracoes e seeds dos modulos restantes
+
+## Endpoints de dominio ja disponiveis
+
+### Empresas prestadoras
+
+- `GET /api/v1/empresas-prestadoras`
+- `GET /api/v1/empresas-prestadoras/:publicId`
+- `POST /api/v1/empresas-prestadoras`
+
+### Clientes contratantes
+
+- `GET /api/v1/clientes`
+- `GET /api/v1/clientes/:publicId`
+- `POST /api/v1/clientes`
+
+### Contratos
+
+- `GET /api/v1/contratos`
+- `GET /api/v1/contratos/:publicId`
+- `POST /api/v1/contratos`
+
+### Pessoas
+
+- `GET /api/v1/pessoas`
+- `GET /api/v1/pessoas/:publicId`
+- `POST /api/v1/pessoas`
+
+### Vinculos
+
+- `GET /api/v1/vinculos`
+- `GET /api/v1/vinculos/:publicId`
+- `POST /api/v1/vinculos`
+- `POST /api/v1/vinculos/:publicId/movimentacoes`
+- `POST /api/v1/vinculos/:publicId/desligamento`
+
+### Tags sensiveis por entidade
+
+- `POST /api/v1/tags-entidade/submissions`
+- `POST /api/v1/tags-entidade`
+- `GET /api/v1/tags-entidade`
+- `GET /api/v1/tags-entidade/:publicId`
+- `PATCH /api/v1/tags-entidade/:publicId`
+- `DELETE /api/v1/tags-entidade/:publicId`
+
+### Anexos protegidos ou formais
+
+- `POST /api/v1/anexos/submissions`
+- `POST /api/v1/anexos`
+- `GET /api/v1/anexos`
+- `GET /api/v1/anexos/:publicId`
+- `PATCH /api/v1/anexos/:publicId`
+- `DELETE /api/v1/anexos/:publicId`
+
+## Regra de compatibilidade com o front atual
+
+O front atual ja nao esta em wireframe puro. Hoje ele ja possui:
+
+- shell CRM ativo;
+- feature explicita de clientes;
+- tela de `People` com `Employment Links`, bloco sensivel e anexos;
+- preview funcional de `Network` com quatro faixas.
+
+Por isso, o backend nao deve mais ser documentado como base para um front ainda inexistente. A leitura correta agora e:
+
+- manter contratos ativos estaveis;
+- enriquecer payload sem quebrar o legado;
+- fechar os endpoints que faltam para `People`, `Network`, ocorrencias e auditoria.
 
 ## Subida local
 
@@ -46,7 +127,7 @@ Base do backend do PariFlow Partners, alinhada ao plano em [docs/preparacao-back
 npm.cmd install
 ```
 
-3. Suba a instância MySQL local do projeto:
+3. Suba a instancia MySQL local do projeto:
 
 ```powershell
 npm.cmd run db:local:setup
@@ -90,99 +171,16 @@ Se `.env` ainda nao existir ou `DATABASE_URL` nao estiver preenchida:
 - `auth/session/exchange` continua funcionando com `dev-token` em ambiente local;
 - endpoints de dominio com Prisma respondem `503`.
 
-Isso permite iniciar o front e o contrato da API antes do banco final estar fechado.
-
 ## Banco local do projeto
 
-O repositório já traz scripts para uma instância MySQL isolada em `127.0.0.1:3308`, sem depender do serviço MySQL principal da máquina:
+O repositorio ja traz scripts para uma instancia MySQL isolada em `127.0.0.1:3308`, sem depender do servico MySQL principal da maquina:
 
 ```powershell
 npm.cmd run db:local:setup
 npm.cmd run db:local:stop
 ```
 
-Arquivos locais dessa instância ficam em `.local/mysql/` e não entram no versionamento.
-
-## Migration inicial
-
-Ja foi gerada a migration inicial em:
-
-```text
-prisma/migrations/20260427_init/migration.sql
-```
-
-Ela foi derivada diretamente do schema atual com `Prisma Migrate Diff`, pronta para ser aplicada com:
-
-```powershell
-npm.cmd run prisma:migrate:deploy
-```
-
-## Bypass de autenticacao para desenvolvimento
-
-Se `NODE_ENV` nao for `production`, o endpoint de exchange aceita o token `dev-token` quando:
-
-- `DEV_AUTH_BYPASS=true`; ou
-- o Firebase Admin ainda nao estiver configurado.
-
-Isso existe apenas para viabilizar o front enquanto Firebase e banco ainda nao estiverem fechados.
-
-Exemplo:
-
-```http
-POST /api/v1/auth/session/exchange
-Content-Type: application/json
-
-{
-  "firebaseIdToken": "dev-token"
-}
-```
-
-## Estrutura
-
-```text
-src/
-  common/
-  config/
-  infra/
-  modules/
-prisma/
-apache/
-docs/
-```
-
-## Endpoints de dominio ja disponiveis
-
-### Empresas prestadoras
-
-- `GET /api/v1/empresas-prestadoras`
-- `GET /api/v1/empresas-prestadoras/:publicId`
-- `POST /api/v1/empresas-prestadoras`
-
-### Clientes contratantes
-
-- `GET /api/v1/clientes`
-- `GET /api/v1/clientes/:publicId`
-- `POST /api/v1/clientes`
-
-### Contratos
-
-- `GET /api/v1/contratos`
-- `GET /api/v1/contratos/:publicId`
-- `POST /api/v1/contratos`
-
-### Pessoas
-
-- `GET /api/v1/pessoas`
-- `GET /api/v1/pessoas/:publicId`
-- `POST /api/v1/pessoas`
-
-### Vinculos
-
-- `GET /api/v1/vinculos`
-- `GET /api/v1/vinculos/:publicId`
-- `POST /api/v1/vinculos`
-- `POST /api/v1/vinculos/:publicId/movimentacoes`
-- `POST /api/v1/vinculos/:publicId/desligamento`
+Arquivos locais dessa instancia ficam em `.local/mysql/` e nao entram no versionamento.
 
 ## Seed inicial
 
