@@ -7,6 +7,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { EntityTagsModule } from './modules/entity-tags/entity-tags.module';
 import { EmploymentLinksModule } from './modules/employment-links/employment-links.module';
 import { HealthModule } from './modules/health/health.module';
+import { NetworkModule } from './modules/network/network.module';
 import { OccurrencesModule } from './modules/occurrences/occurrences.module';
 import { PeopleModule } from './modules/people/people.module';
 import { ProviderCompaniesModule } from './modules/provider-companies/provider-companies.module';
@@ -22,6 +23,7 @@ import { ProviderCompaniesModule } from './modules/provider-companies/provider-c
     EntityTagsModule,
     AttachmentsModule,
     OccurrencesModule,
+    NetworkModule,
     PeopleModule,
     EmploymentLinksModule
   ]

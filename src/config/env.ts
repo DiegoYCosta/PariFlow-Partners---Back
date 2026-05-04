@@ -39,6 +39,19 @@ const optionalEmailFromEnv = z.preprocess((value) => {
   return value;
 }, z.string().email().optional());
 
+const optionalUrlListFromEnv = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return items.length > 0 ? items : undefined;
+}, z.array(z.string().url()).optional());
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -50,6 +63,7 @@ const environmentSchema = z.object({
 
     return value;
   }, z.string().url().optional()),
+  CORS_ORIGINS: optionalUrlListFromEnv,
   API_PREFIX: z.string().min(1).default('api/v1'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose'])

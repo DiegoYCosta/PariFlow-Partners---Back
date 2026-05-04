@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -23,9 +23,17 @@ async function bootstrap() {
 
   await app.register(cookie as never);
   await app.register(helmet as never);
+  const productionCorsOrigins = env.CORS_ORIGINS ?? (
+    env.APP_URL ? [env.APP_URL] : []
+  );
   await app.register(cors as never, {
     credentials: true,
-    origin: env.NODE_ENV === 'production' ? env.APP_URL ?? false : true
+    origin:
+      env.NODE_ENV === 'production'
+        ? productionCorsOrigins.length > 0
+          ? productionCorsOrigins
+          : false
+        : true
   });
 
   app.useGlobalPipes(
@@ -40,7 +48,11 @@ async function bootstrap() {
   // O front entra em cima de /api/v1 desde o primeiro dia. Se houver quebra
   // de contrato depois, o caminho e versionar antes de mexer no prefixo atual.
   app.setGlobalPrefix(env.API_PREFIX, {
-    exclude: ['health']
+    exclude: [
+      { path: 'health', method: RequestMethod.GET },
+      { path: 'health/live', method: RequestMethod.GET },
+      { path: 'health/ready', method: RequestMethod.GET }
+    ]
   });
   app.enableShutdownHooks();
 
