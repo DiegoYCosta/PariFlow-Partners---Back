@@ -2,56 +2,55 @@
 
 Backend NestJS/Fastify/Prisma do PariFlow Partners.
 
-Data de referencia: `2026-05-04`.
+Data de referencia: `2026-05-08`.
 
 ## Estado Atual
 
-O backend ja possui os modulos operacionais centrais e esta preparado para a
-primeira homologacao em AWS EC2 com Apache, PM2 e MySQL local.
+O backend possui os modulos operacionais centrais e ja foi publicado em
+homologacao AWS por IP atras de Apache, PM2 e MySQL local.
 
 O que nao deve mais aparecer como pendencia inicial:
 
 - criar empresas, clientes ou contratos;
 - criar People/pessoas;
-- criar tags ou anexos;
-- criar ocorrencias;
+- criar tags, anexos ou ocorrencias;
 - criar `GET /network/graph`;
-- criar CRUD basico dos modulos mestre.
+- criar CRUD basico dos modulos mestre;
+- habilitar mock/sample como fallback de runtime.
 
 ## Stack
 
 - Node.js 22+
 - NestJS
-- Fastify
+- Fastify `5.8.5`
 - Prisma
 - MySQL
-- Firebase Admin
-- Swagger/OpenAPI
+- Firebase Admin para validar Firebase ID Token
 - Apache reverse proxy
 - PM2
 
-## Materiais de Seguranca e Deploy AWS
+Swagger/OpenAPI existe para uso local/controlado, mas fica desabilitado em
+producao por `SWAGGER_ENABLED=false`.
+
+## Seguranca e Deploy AWS
 
 - [Checklist AWS de seguranca](docs/aws-security-checklist.md)
 - [Apache reverse proxy com headers de seguranca](apache/pariflow-back.conf.example)
 - `scripts/smoke-aws-security.sh`
 
-Arquivos `.env.aws*` ficam ignorados pelo Git. O arquivo local
-`.env.aws.preview` pode ser usado como base para copiar o `.env` da EC2 na
-homologacao privada por IP.
+Estado remoto verificado:
 
-Credenciais Firebase Admin, JWT secrets, senha de banco, chaves AWS e arquivos
-de service account pertencem somente ao backend/infra. Nao copiar esses valores
-para o front e nao versionar `.env` real.
+- `NODE_ENV=production`
+- `PREVIEW_AUTH_BYPASS=false`
+- `DEV_AUTH_BYPASS=false`
+- `SEED_ENABLE_SAMPLE_DATA=false`
+- `SWAGGER_ENABLED=false`
+- JWT secrets nao usam `change-this-*`
+- `COOKIE_SECURE=false` enquanto a homologacao for HTTP por IP
 
-O front so precisa de ajuste se a API ficar em outro host:
-
-```bash
-flutter build web --release --dart-define=PARIFLOW_API_BASE_URL=https://dominio/api/v1
-```
-
-No modo preferencial, Apache serve front em `/` e API em `/api/v1` no mesmo
-host.
+O deploy instala dependencias com `npm ci --omit=optional`, porque o backend
+usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
+`firebase-admin`.
 
 ## Endpoints Ativos
 
@@ -60,14 +59,14 @@ host.
 - `GET /health`
 - `GET /health/live`
 - `GET /health/ready`
-- Swagger em `/api/docs`
+- `GET /api/docs` somente quando `SWAGGER_ENABLED=true`
 
 ### Auth
 
 - `POST /api/v1/auth/session/exchange`
 - `GET /api/v1/auth/me`
-- `POST /api/v1/auth/refresh` reservado/parcial
-- `POST /api/v1/auth/logout` reservado/parcial
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/sensitive-session/start` reservado/parcial
 - `POST /api/v1/auth/sensitive-session/verify` reservado/parcial
 
@@ -106,18 +105,25 @@ host.
 - `POST /api/v1/anexos/submissions`
 - `GET /api/v1/network/graph`
 
-## Pendencias Reais
+## Integracao com o Front
 
-1. Validar CRUDs e Network na homologacao AWS atual com dados reais.
-2. Habilitar Email/Password, criar usuarios reais e trocar preview auth por Firebase real, mantendo
-   `PREVIEW_AUTH_BYPASS=false` em producao publica.
-3. Completar refresh/logout/sensitive-session.
-4. Ligar storage privado, download rastreavel e step-up para anexos sensiveis.
-5. Implementar auditoria operacional e eventos de seguranca.
-6. Implementar relatorios e consultas executivas.
-7. Enriquecer detalhes de clientes/prestadoras quando o front precisar de
-   contexto relacional sem chamadas auxiliares.
-8. Otimizar `GET /network/graph` com dados reais e regras de ACL.
+O front consome API real para:
+
+- Companies, Clients e Contracts;
+- catalogo contratual;
+- People;
+- ocorrencias;
+- anexos;
+- Network.
+
+Regras mantidas:
+
+- front usa `publicId`, nunca ID interno;
+- ACL, conteudo sensivel e permissoes sao decididos no backend;
+- Service Account Firebase, JWT secrets, senha de banco e chaves AWS ficam
+  somente no backend/infra;
+- `.env` real nao entra no Git;
+- host publico exige Firebase Admin configurado e build sem `dev-token`.
 
 ## Subida Local
 
@@ -130,19 +136,16 @@ npm.cmd run prisma:seed
 npm.cmd run start:dev
 ```
 
-Para teste local sem Firebase real, use o modo reversivel de token local:
+Modo local reversivel sem Firebase real:
 
 ```powershell
 npm.cmd run dev:local-token
 ```
 
-Esse modo prende o back em loopback, define `NODE_ENV=development` e habilita
-`DEV_AUTH_BYPASS=true` somente no processo atual. Ele tambem sobe o MySQL local
-isolado do projeto em `127.0.0.1:3308` e aplica migrations antes de iniciar a
-API. Em AWS/publico, mantenha `DEV_AUTH_BYPASS=false`,
-`PREVIEW_AUTH_BYPASS=false` e use Firebase Admin real.
+Esse modo define `NODE_ENV=development`, prende a API em loopback e habilita
+`DEV_AUTH_BYPASS=true` somente no processo atual. Nao altera AWS nem banco real.
 
-Com o back local ativo, suba o front em outro terminal:
+Com o back local ativo:
 
 ```powershell
 cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Front"
@@ -155,13 +158,22 @@ Swagger local:
 http://localhost:3000/api/docs
 ```
 
-## Banco Local do Projeto
+## Firebase Admin e Usuarios Reais
 
-O repositorio traz scripts para MySQL local isolado em `127.0.0.1:3308`:
+Para liberar login online:
+
+1. Habilitar Email/Password no Firebase.
+2. Criar usuarios reais no Firebase.
+3. Aplicar Service Account no `.env` do backend remoto.
+4. Conceder perfil interno ao usuario real.
+5. Rodar smoke de login real ponta a ponta.
+6. Confirmar que `dev-token` segue rejeitado em host publico.
+
+Scripts:
 
 ```powershell
-npm.cmd run db:local:setup
-npm.cmd run db:local:stop
+.\scripts\apply-firebase-admin-env.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
+npm.cmd run user:grant-admin -- --email "admin@empresa.com" --firebaseUid "uid" --name "Administrador"
 ```
 
 ## Seed
@@ -172,3 +184,18 @@ O seed e idempotente:
 - garante catalogo basico de servicos;
 - cria usuario admin somente se `SEED_ADMIN_EMAIL` estiver preenchido;
 - cria dados de exemplo somente com `SEED_ENABLE_SAMPLE_DATA=true`.
+
+Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
+
+## Pendencias Reais
+
+1. Configurar dominio e HTTPS.
+2. Configurar Firebase Admin na EC2 e criar usuarios reais.
+3. Integrar o front ao refresh/logout quando a UX de sessao for fechada.
+4. Completar sensitive-session/step-up.
+5. Ligar storage privado e download rastreavel para anexos sensiveis.
+6. Implementar auditoria operacional e eventos de seguranca.
+7. Implementar relatorios e consultas executivas.
+8. Enriquecer detalhes de clientes/prestadoras quando o front precisar.
+9. Otimizar `GET /network/graph` com dados reais e regras de ACL.
+10. Definir backup/restore de banco.

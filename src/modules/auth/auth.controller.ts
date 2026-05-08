@@ -15,13 +15,19 @@ import {
 } from '@nestjs/swagger';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRefreshCookieOptions } from '../../common/utils/cookie-options';
+import { RefreshSessionDto } from './dto/refresh-session.dto';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
 import { InternalAuthGuard } from './guards/internal-auth.guard';
+import { PrivilegedAccessGuard } from './guards/privileged-access.guard';
 import { AuthTokenPayload } from './interfaces/auth-token-payload.interface';
 import { AuthService } from './auth.service';
 
 type AuthenticatedRequest = FastifyRequest & {
   user?: AuthTokenPayload;
+};
+
+type CookieRequest = FastifyRequest & {
+  cookies?: Record<string, string>;
 };
 
 @ApiTags('auth')
@@ -36,17 +42,21 @@ export class AuthController {
   async exchangeSession(
     @Body() dto: SessionExchangeDto,
     @Req() request: FastifyRequest,
-    @Res({ passthrough: true }) _reply: FastifyReply
+    @Res({ passthrough: true }) reply: FastifyReply
   ) {
     // Esse retorno precisa bastar para o bootstrap inicial da aplicacao.
     // Se faltar contexto aqui, o front nasce dependente de chamada extra logo apos login.
-    return this.authService.exchangeFirebaseSession(dto, {
+    const session = await this.authService.exchangeFirebaseSession(dto, {
       forwardedFor: request.headers['x-forwarded-for'],
       forwardedHost: request.headers['x-forwarded-host'],
       host: request.headers.host,
       origin: request.headers.origin,
-      remoteAddress: request.ip
+      remoteAddress: request.ip,
+      userAgent: request.headers['user-agent']
     });
+
+    this.applyRefreshCookie(reply, session.refreshToken);
+    return this.withoutRefreshToken(session);
   }
 
   @Get('me')
@@ -63,22 +73,48 @@ export class AuthController {
 
   @Post('refresh')
   @ApiOperation({
-    summary: 'Endpoint reservado para refresh token rotativo.'
+    summary: 'Rotaciona refresh token e emite novo access token.'
   })
-  async refreshSession() {
-    return this.authService.refreshSession();
+  async refreshSession(
+    @Body() dto: RefreshSessionDto | undefined,
+    @Req() request: CookieRequest,
+    @Res({ passthrough: true }) reply: FastifyReply
+  ) {
+    const session = await this.authService.refreshSession(
+      dto?.refreshToken ?? request.cookies?.refresh_token,
+      {
+        forwardedFor: request.headers['x-forwarded-for'],
+        forwardedHost: request.headers['x-forwarded-host'],
+        host: request.headers.host,
+        origin: request.headers.origin,
+        remoteAddress: request.ip,
+        userAgent: request.headers['user-agent']
+      }
+    );
+
+    this.applyRefreshCookie(reply, session.refreshToken);
+    return this.withoutRefreshToken(session);
   }
 
   @Post('logout')
   @ApiOperation({
-    summary: 'Endpoint reservado para logout e revogacao de sessao.'
+    summary: 'Revoga refresh token e encerra a sessao interna.'
   })
-  async logout(@Res({ passthrough: true }) reply: FastifyReply) {
+  async logout(
+    @Body() dto: RefreshSessionDto | undefined,
+    @Req() request: CookieRequest,
+    @Res({ passthrough: true }) reply: FastifyReply
+  ) {
+    await this.authService.logout(
+      dto?.refreshToken ?? request.cookies?.refresh_token
+    );
     reply.clearCookie('refresh_token', buildRefreshCookieOptions());
-    return this.authService.logout();
+    return { loggedOut: true };
   }
 
   @Post('sensitive-session/start')
+  @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Inicia o fluxo de step-up para area sensivel.'
   })
@@ -87,10 +123,31 @@ export class AuthController {
   }
 
   @Post('sensitive-session/verify')
+  @UseGuards(InternalAuthGuard, PrivilegedAccessGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Valida MFA ou fator adicional de sessao sensivel.'
   })
   async verifySensitiveSession() {
     return this.authService.verifySensitiveSession();
+  }
+
+  private applyRefreshCookie(reply: FastifyReply, refreshToken?: string) {
+    if (!refreshToken) {
+      return;
+    }
+
+    reply.setCookie(
+      'refresh_token',
+      refreshToken,
+      buildRefreshCookieOptions()
+    );
+  }
+
+  private withoutRefreshToken<T extends { refreshToken?: string }>(
+    session: T
+  ): Omit<T, 'refreshToken'> {
+    const { refreshToken: _refreshToken, ...safeSession } = session;
+    return safeSession;
   }
 }

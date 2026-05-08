@@ -4,8 +4,14 @@ import {
   NotImplementedException,
   UnauthorizedException
 } from '@nestjs/common';
-import { AccessProfileCode, SensitiveAudienceGroup } from '@prisma/client';
+import {
+  AccessProfileCode,
+  RefreshTokenStatus,
+  SecurityEventType,
+  SensitiveAudienceGroup
+} from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
+import { createHash, randomBytes } from 'node:crypto';
 import { createPublicId } from '../../common/utils/public-id';
 import { databaseUrl, env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
@@ -26,12 +32,22 @@ type SessionUser = SessionIdentity & {
   publicId: string;
 };
 
+type SessionSnapshot = {
+  user: SessionUser;
+  userSystemId?: bigint;
+  profiles: string[];
+  audienceGroups: SensitiveAudienceGroup[];
+  capabilities: AuthCapabilities;
+  securityContext: AuthTokenPayload['securityContext'];
+};
+
 type SessionRequestContext = {
   forwardedFor?: string | string[];
   forwardedHost?: string | string[];
   host?: string;
   origin?: string;
   remoteAddress?: string;
+  userAgent?: string;
 };
 
 @Injectable()
@@ -55,32 +71,88 @@ export class AuthService {
     );
     const sessionSnapshot = await this.resolveSessionSnapshot(identity);
 
-    const payload: AuthTokenPayload = {
-      sub: sessionSnapshot.user.publicId,
-      firebaseUid: sessionSnapshot.user.firebaseUid,
-      email: sessionSnapshot.user.email,
-      profiles: sessionSnapshot.profiles,
-      audienceGroups: sessionSnapshot.audienceGroups,
-      securityContext: sessionSnapshot.securityContext,
-      capabilities: sessionSnapshot.capabilities
-    };
-
-    const accessToken = await this.jwtService.signAsync(payload, {
-      secret: env.JWT_ACCESS_SECRET,
-      expiresIn: `${env.JWT_ACCESS_TTL_MINUTES}m`
-    });
+    const accessToken = await this.signAccessToken(sessionSnapshot);
+    const refreshToken = await this.issueRefreshToken(
+      sessionSnapshot.userSystemId,
+      requestContext
+    );
+    await this.recordSecurityEvent(
+      sessionSnapshot.userSystemId,
+      SecurityEventType.SESSION_EXCHANGED,
+      'Sessao interna emitida por token Firebase validado.',
+      requestContext
+    );
 
     // Esse snapshot precisa sair suficiente para o front montar sessao,
     // navegacao e bloqueios iniciais sem adivinhar permissao na interface.
-    return {
+    return this.buildSessionResponse(sessionSnapshot, accessToken, refreshToken);
+  }
+
+  async refreshSession(
+    refreshToken?: string,
+    requestContext?: SessionRequestContext
+  ) {
+    if (!databaseUrl) {
+      throw new UnauthorizedException(
+        'Refresh token exige banco de dados configurado.'
+      );
+    }
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token nao informado.');
+    }
+
+    const storedToken = await this.prisma.refreshToken.findFirst({
+      where: {
+        tokenHash: hashRefreshToken(refreshToken)
+      },
+      include: {
+        userSystem: true
+      }
+    });
+
+    if (!storedToken || storedToken.status !== RefreshTokenStatus.ACTIVE) {
+      throw new UnauthorizedException('Refresh token invalido ou revogado.');
+    }
+
+    if (storedToken.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.refreshToken.update({
+        where: { id: storedToken.id },
+        data: {
+          status: RefreshTokenStatus.EXPIRED
+        }
+      });
+      throw new UnauthorizedException('Refresh token expirado.');
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: {
+        status: RefreshTokenStatus.ROTATED,
+        rotatedAt: new Date()
+      }
+    });
+
+    const sessionSnapshot = await this.resolvePersistedSessionSnapshot(
+      storedToken.userSystem
+    );
+    const accessToken = await this.signAccessToken(sessionSnapshot);
+    const nextRefreshToken = await this.issueRefreshToken(
+      storedToken.userSystemId,
+      requestContext
+    );
+    await this.recordSecurityEvent(
+      storedToken.userSystemId,
+      SecurityEventType.REFRESH_ROTATED,
+      'Refresh token rotacionado e novo access token emitido.',
+      requestContext
+    );
+
+    return this.buildSessionResponse(
+      sessionSnapshot,
       accessToken,
-      expiresInSeconds: env.JWT_ACCESS_TTL_MINUTES * 60,
-      securityContext: sessionSnapshot.securityContext,
-      profiles: sessionSnapshot.profiles,
-      audienceGroups: sessionSnapshot.audienceGroups,
-      capabilities: sessionSnapshot.capabilities,
-      user: sessionSnapshot.user
-    };
+      nextRefreshToken
+    );
   }
 
   async getCurrentUser(payload: AuthTokenPayload) {
@@ -99,18 +171,23 @@ export class AuthService {
     };
   }
 
-  async refreshSession() {
-    // Quando o ciclo de sessao interna estiver completo, este endpoint passa a
-    // rotacionar refresh_tokens persistidos e a renovar o contexto do usuario.
-    throw new NotImplementedException(
-      'Refresh token rotativo ainda nao foi habilitado.'
-    );
-  }
+  async logout(refreshToken?: string) {
+    if (!databaseUrl || !refreshToken) {
+      return { loggedOut: true };
+    }
 
-  async logout() {
-    throw new NotImplementedException(
-      'Logout com revogacao de sessao ainda nao foi habilitado.'
-    );
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        tokenHash: hashRefreshToken(refreshToken),
+        status: RefreshTokenStatus.ACTIVE
+      },
+      data: {
+        status: RefreshTokenStatus.REVOKED,
+        revokedAt: new Date()
+      }
+    });
+
+    return { loggedOut: true };
   }
 
   async startSensitiveSession() {
@@ -166,13 +243,9 @@ export class AuthService {
     };
   }
 
-  private async resolveSessionSnapshot(identity: SessionIdentity): Promise<{
-    user: SessionUser;
-    profiles: string[];
-    audienceGroups: SensitiveAudienceGroup[];
-    capabilities: AuthCapabilities;
-    securityContext: AuthTokenPayload['securityContext'];
-  }> {
+  private async resolveSessionSnapshot(
+    identity: SessionIdentity
+  ): Promise<SessionSnapshot> {
     if (!databaseUrl) {
       // Esse fallback segura o contrato de auth enquanto banco e Firebase ainda
       // estao fechando, para o front conseguir subir fluxo e validacao basica.
@@ -223,6 +296,7 @@ export class AuthService {
           nome: persistedUser.name,
           email: persistedUser.email
         },
+        userSystemId: persistedUser.id,
         profiles: localProfiles,
         audienceGroups: this.resolveAudienceGroupsFromProfileKeys(localProfiles),
         capabilities,
@@ -230,23 +304,7 @@ export class AuthService {
       };
     }
 
-    const capabilities = this.buildCapabilities(profiles);
-    const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
-
-    return {
-      user: {
-        publicId: persistedUser.publicId,
-        firebaseUid: persistedUser.firebaseUid ?? identity.firebaseUid,
-        nome: persistedUser.name,
-        email: persistedUser.email
-      },
-      profiles: profiles.map((profile) =>
-        this.mapProfileCode(profile.accessProfile.code)
-      ),
-      audienceGroups,
-      capabilities,
-      securityContext: this.resolveSecurityContext(profiles, capabilities)
-    };
+    return this.resolvePersistedSessionSnapshot(persistedUser);
   }
 
   private async upsertInternalUser(identity: SessionIdentity) {
@@ -296,6 +354,135 @@ export class AuthService {
         accessProfile: true
       }
     });
+  }
+
+  private async resolvePersistedSessionSnapshot(persistedUser: {
+    id: bigint;
+    publicId: string;
+    firebaseUid: string | null;
+    name: string;
+    email: string | null;
+  }): Promise<SessionSnapshot> {
+    const profiles = await this.loadUserProfiles(persistedUser.id);
+    const capabilities = this.buildCapabilities(profiles);
+    const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
+
+    return {
+      user: {
+        publicId: persistedUser.publicId,
+        firebaseUid: persistedUser.firebaseUid ?? '',
+        nome: persistedUser.name,
+        email: persistedUser.email
+      },
+      userSystemId: persistedUser.id,
+      profiles: profiles.map((profile) =>
+        this.mapProfileCode(profile.accessProfile.code)
+      ),
+      audienceGroups,
+      capabilities,
+      securityContext: this.resolveSecurityContext(profiles, capabilities)
+    };
+  }
+
+  private async signAccessToken(sessionSnapshot: SessionSnapshot) {
+    const payload: AuthTokenPayload = {
+      sub: sessionSnapshot.user.publicId,
+      firebaseUid: sessionSnapshot.user.firebaseUid,
+      email: sessionSnapshot.user.email,
+      profiles: sessionSnapshot.profiles,
+      audienceGroups: sessionSnapshot.audienceGroups,
+      securityContext: sessionSnapshot.securityContext,
+      capabilities: sessionSnapshot.capabilities
+    };
+
+    return this.jwtService.signAsync(payload, {
+      secret: env.JWT_ACCESS_SECRET,
+      expiresIn: `${env.JWT_ACCESS_TTL_MINUTES}m`
+    });
+  }
+
+  private buildSessionResponse(
+    sessionSnapshot: SessionSnapshot,
+    accessToken: string,
+    refreshToken?: string
+  ) {
+    return {
+      accessToken,
+      refreshToken,
+      expiresInSeconds: env.JWT_ACCESS_TTL_MINUTES * 60,
+      refreshExpiresInSeconds: env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60,
+      securityContext: sessionSnapshot.securityContext,
+      profiles: sessionSnapshot.profiles,
+      audienceGroups: sessionSnapshot.audienceGroups,
+      capabilities: sessionSnapshot.capabilities,
+      user: sessionSnapshot.user
+    };
+  }
+
+  private async issueRefreshToken(
+    userSystemId?: bigint,
+    requestContext?: SessionRequestContext
+  ) {
+    if (!databaseUrl || !userSystemId) {
+      return undefined;
+    }
+
+    const refreshToken = createRefreshTokenValue();
+    const expiresAt = new Date(
+      Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    await this.prisma.refreshToken.create({
+      data: {
+        publicId: createPublicId('rft'),
+        userSystemId,
+        tokenHash: hashRefreshToken(refreshToken),
+        expiresAt,
+        ipAddress: this.resolveClientIp(requestContext),
+        userAgent: truncateForColumn(requestContext?.userAgent, 255)
+      }
+    });
+
+    return refreshToken;
+  }
+
+  private async recordSecurityEvent(
+    userSystemId: bigint | undefined,
+    eventType: SecurityEventType,
+    description: string,
+    requestContext?: SessionRequestContext
+  ) {
+    if (!databaseUrl || !userSystemId) {
+      return;
+    }
+
+    try {
+      await this.prisma.securityEvent.create({
+        data: {
+          publicId: createPublicId('sev'),
+          userSystemId,
+          eventType,
+          description,
+          ipAddress: this.resolveClientIp(requestContext),
+          userAgent: truncateForColumn(requestContext?.userAgent, 255)
+        }
+      });
+    } catch {
+      // Evento de seguranca nao pode quebrar login ou refresh.
+    }
+  }
+
+  private resolveClientIp(requestContext?: SessionRequestContext) {
+    if (!requestContext) {
+      return undefined;
+    }
+
+    const forwardedAddress = this.resolveHeaderValues(
+      requestContext.forwardedFor
+    )[0];
+    const address = forwardedAddress ?? requestContext.remoteAddress;
+
+    return truncateForColumn(normalizeRemoteAddress(address), 64);
   }
 
   // O front consome essas capacidades diretamente para montar navegacao e
@@ -460,6 +647,14 @@ function createUserPublicId(): string {
   return createPublicId('usr');
 }
 
+function createRefreshTokenValue(): string {
+  return randomBytes(48).toString('base64url');
+}
+
+function hashRefreshToken(refreshToken: string): string {
+  return createHash('sha256').update(refreshToken).digest('hex');
+}
+
 function hostnameFromHeaderValue(value: string): string | null {
   const trimmedValue = value.trim();
 
@@ -495,4 +690,23 @@ function isLocalRemoteAddress(remoteAddress?: string): boolean {
     .toLowerCase();
 
   return ['localhost', '127.0.0.1', '::1'].includes(normalizedAddress);
+}
+
+function normalizeRemoteAddress(remoteAddress?: string): string | undefined {
+  if (!remoteAddress) {
+    return undefined;
+  }
+
+  return remoteAddress.trim().replace(/^::ffff:/, '');
+}
+
+function truncateForColumn(
+  value: string | undefined,
+  maxLength: number
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
 }

@@ -8,6 +8,7 @@ function apiAuthCookiePath() {
 export function buildRefreshCookieOptions(): {
   domain?: string;
   httpOnly: true;
+  maxAge: number;
   sameSite: 'lax';
   path: string;
   secure: boolean;
@@ -17,6 +18,7 @@ export function buildRefreshCookieOptions(): {
   return {
     domain: env.COOKIE_DOMAIN,
     httpOnly: true,
+    maxAge: env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60,
     sameSite: 'lax',
     path: apiAuthCookiePath(),
     secure: env.COOKIE_SECURE
