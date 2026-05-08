@@ -8,6 +8,18 @@ CURL_TIMEOUT="${CURL_TIMEOUT:-15}"
 BASE_URL="${BASE_URL%/}"
 API_BASE="$BASE_URL/api/v1"
 
+is_local_base_url=false
+case "$BASE_URL" in
+  http://localhost*|https://localhost*|http://127.0.0.1*|https://127.0.0.1*|http://\[::1\]*|https://\[::1\]*)
+    is_local_base_url=true
+    ;;
+esac
+
+if [[ "$EXPECT_PREVIEW_BYPASS" == "true" && "$is_local_base_url" != "true" ]]; then
+  echo "FAIL dev-token smoke: EXPECT_PREVIEW_BYPASS=true is allowed only for localhost/loopback targets."
+  exit 1
+fi
+
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -111,11 +123,11 @@ assert_status "$status" "401" "protected route rejects anonymous request"
 status="$(request POST "$API_BASE/auth/session/exchange" '{"firebaseIdToken":"dev-token"}')"
 
 if [[ "$EXPECT_PREVIEW_BYPASS" == "true" ]]; then
-  assert_2xx "$status" "preview dev-token exchange"
+  assert_2xx "$status" "local dev-token exchange"
   ACCESS_TOKEN="$(extract_access_token)"
 
   if [[ -z "$ACCESS_TOKEN" ]]; then
-    echo "FAIL preview dev-token exchange: accessToken not found"
+    echo "FAIL local dev-token exchange: accessToken not found"
     cat "$BODY_FILE"
     echo
     exit 1

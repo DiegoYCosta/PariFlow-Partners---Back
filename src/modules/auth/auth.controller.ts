@@ -35,11 +35,18 @@ export class AuthController {
   })
   async exchangeSession(
     @Body() dto: SessionExchangeDto,
+    @Req() request: FastifyRequest,
     @Res({ passthrough: true }) _reply: FastifyReply
   ) {
     // Esse retorno precisa bastar para o bootstrap inicial da aplicacao.
     // Se faltar contexto aqui, o front nasce dependente de chamada extra logo apos login.
-    return this.authService.exchangeFirebaseSession(dto);
+    return this.authService.exchangeFirebaseSession(dto, {
+      forwardedFor: request.headers['x-forwarded-for'],
+      forwardedHost: request.headers['x-forwarded-host'],
+      host: request.headers.host,
+      origin: request.headers.origin,
+      remoteAddress: request.ip
+    });
   }
 
   @Get('me')

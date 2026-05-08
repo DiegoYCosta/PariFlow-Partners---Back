@@ -130,6 +130,16 @@ npm.cmd run prisma:seed
 npm.cmd run start:dev
 ```
 
+Para teste local sem Firebase real, use o modo reversivel de token local:
+
+```powershell
+npm.cmd run dev:local-token
+```
+
+Esse modo prende o back em loopback, define `NODE_ENV=development` e habilita
+`DEV_AUTH_BYPASS=true` somente no processo atual. Em AWS/publico, mantenha
+`DEV_AUTH_BYPASS=false`, `PREVIEW_AUTH_BYPASS=false` e use Firebase Admin real.
+
 Swagger local:
 
 ```text

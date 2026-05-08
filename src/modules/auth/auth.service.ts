@@ -26,6 +26,14 @@ type SessionUser = SessionIdentity & {
   publicId: string;
 };
 
+type SessionRequestContext = {
+  forwardedFor?: string | string[];
+  forwardedHost?: string | string[];
+  host?: string;
+  origin?: string;
+  remoteAddress?: string;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -37,8 +45,14 @@ export class AuthService {
     private readonly prisma: PrismaService
   ) {}
 
-  async exchangeFirebaseSession(dto: SessionExchangeDto) {
-    const identity = await this.resolveSessionIdentity(dto.firebaseIdToken);
+  async exchangeFirebaseSession(
+    dto: SessionExchangeDto,
+    requestContext?: SessionRequestContext
+  ) {
+    const identity = await this.resolveSessionIdentity(
+      dto.firebaseIdToken,
+      requestContext
+    );
     const sessionSnapshot = await this.resolveSessionSnapshot(identity);
 
     const payload: AuthTokenPayload = {
@@ -114,13 +128,14 @@ export class AuthService {
   }
 
   private async resolveSessionIdentity(
-    firebaseIdToken: string
+    firebaseIdToken: string,
+    requestContext?: SessionRequestContext
   ): Promise<SessionIdentity> {
     const canUseDevelopmentBypass =
-      ((env.NODE_ENV !== 'production' &&
-        (env.DEV_AUTH_BYPASS || !this.firebaseAdminService.isConfigured())) ||
-        env.PREVIEW_AUTH_BYPASS) &&
-      firebaseIdToken === 'dev-token';
+      firebaseIdToken === 'dev-token' &&
+      env.NODE_ENV !== 'production' &&
+      (env.DEV_AUTH_BYPASS || env.PREVIEW_AUTH_BYPASS) &&
+      this.isLocalDevelopmentRequest(requestContext);
 
     if (canUseDevelopmentBypass) {
       return {
@@ -386,8 +401,98 @@ export class AuthService {
         return String(code).toLowerCase();
     }
   }
+
+  private isLocalDevelopmentRequest(
+    requestContext?: SessionRequestContext
+  ): boolean {
+    if (!requestContext) {
+      return false;
+    }
+
+    const originHosts = this.resolveHostnames(requestContext.origin);
+    if (originHosts.length > 0 && !originHosts.every(isLocalHostname)) {
+      return false;
+    }
+
+    const forwardedHosts = this.resolveHostnames(requestContext.forwardedHost);
+    if (
+      forwardedHosts.length > 0 &&
+      !forwardedHosts.every(isLocalHostname)
+    ) {
+      return false;
+    }
+
+    const hostNames = this.resolveHostnames(requestContext.host);
+    if (hostNames.length === 0 || !hostNames.every(isLocalHostname)) {
+      return false;
+    }
+
+    const forwardedAddresses = this.resolveHeaderValues(
+      requestContext.forwardedFor
+    );
+    if (
+      forwardedAddresses.length > 0 &&
+      !forwardedAddresses.every(isLocalRemoteAddress)
+    ) {
+      return false;
+    }
+
+    return isLocalRemoteAddress(requestContext.remoteAddress);
+  }
+
+  private resolveHostnames(header?: string | string[]): string[] {
+    return this.resolveHeaderValues(header)
+      .map((value) => hostnameFromHeaderValue(value))
+      .filter((hostname): hostname is string => Boolean(hostname));
+  }
+
+  private resolveHeaderValues(header?: string | string[]): string[] {
+    const values = Array.isArray(header) ? header : header ? [header] : [];
+
+    return values
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+  }
 }
 
 function createUserPublicId(): string {
   return createPublicId('usr');
+}
+
+function hostnameFromHeaderValue(value: string): string | null {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(
+      trimmedValue.includes('://') ? trimmedValue : `http://${trimmedValue}`
+    );
+
+    return parsedUrl.hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  const normalizedHostname = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  return ['localhost', '127.0.0.1', '::1'].includes(normalizedHostname);
+}
+
+function isLocalRemoteAddress(remoteAddress?: string): boolean {
+  if (!remoteAddress) {
+    return false;
+  }
+
+  const normalizedAddress = remoteAddress
+    .trim()
+    .replace(/^::ffff:/, '')
+    .toLowerCase();
+
+  return ['localhost', '127.0.0.1', '::1'].includes(normalizedAddress);
 }

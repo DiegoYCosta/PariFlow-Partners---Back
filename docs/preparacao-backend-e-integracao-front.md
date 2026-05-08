@@ -51,11 +51,10 @@ O front ja consome a API real para:
 
 Durante preview privado, o front inicializa Firebase Web, exibe login por
 e-mail/senha e usa token Firebase real quando houver usuario logado. Enquanto
-usuarios reais e Admin SDK nao estiverem fechados, ele ainda pode trocar sessao
-com `dev-token` se o build permitir `PARIFLOW_ENABLE_DEV_TOKEN=true`.
-Portanto, homologacao por IP usa `PREVIEW_AUTH_BYPASS=true`. Producao publica
-exige Firebase Admin configurado, build com `PARIFLOW_ENABLE_DEV_TOKEN=false`
-e bypass desligado.
+usuarios reais e Admin SDK nao estiverem fechados, o `dev-token` fica restrito
+a localhost/loopback com `NODE_ENV` nao-producao e bypass explicito. Homologacao
+por IP e producao publica exigem Firebase Admin configurado, build com
+`PARIFLOW_ENABLE_DEV_TOKEN=false` e bypass desligado.
 
 ## Roadmap Real
 
@@ -77,7 +76,7 @@ Concluida em preview por IP. Apache serve o Flutter estatico em `/`, encaminha
 - habilitar Email/Password e criar usuarios reais no Firebase;
 - preencher Firebase Admin no `.env` da EC2;
 - buildar o front com `PARIFLOW_ENABLE_DEV_TOKEN=false`;
-- desligar `PREVIEW_AUTH_BYPASS`;
+- manter `PREVIEW_AUTH_BYPASS=false` e `DEV_AUTH_BYPASS=false`;
 - implementar refresh/logout.
 
 ### Fase 4. Dossie Seguro
@@ -103,5 +102,5 @@ Concluida em preview por IP. Apache serve o Flutter estatico em `/`, encaminha
 - rotas protegidas recusam requisicao sem Bearer;
 - Security Group nao expoe `3000`, `3001`, `3306` ou `33060`;
 - MySQL escuta em `127.0.0.1`;
-- smoke test passa em preview;
-- antes de producao publica, `dev-token` deve falhar.
+- smoke test passa em preview/publico com `EXPECT_PREVIEW_BYPASS=false`;
+- fora de localhost/loopback, `dev-token` deve falhar.

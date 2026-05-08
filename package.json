@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
+    "dev:local-token": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-local-dev-token.ps1",
     "start:dev": "tsx watch src/main.ts",
     "lint": "tsc --noEmit",
     "db:local:setup": "powershell -ExecutionPolicy Bypass -File .\\scripts\\setup-local-mysql.ps1",

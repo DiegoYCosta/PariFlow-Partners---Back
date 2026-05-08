@@ -14,8 +14,10 @@ Use somente para homologacao curta e controlada.
 - `APP_URL=http://3.18.213.49`
 - `CORS_ORIGINS=http://3.18.213.49`
 - `COOKIE_SECURE=false`, porque ainda nao ha HTTPS.
-- `PREVIEW_AUTH_BYPASS=true`, porque o front atual ainda troca sessao com
-  `dev-token`.
+- `PREVIEW_AUTH_BYPASS=false`
+- `DEV_AUTH_BYPASS=false`
+- `dev-token` nao deve ser aceito em IP publico; use Firebase Admin e usuario
+  real tambem na homologacao por IP.
 - Security Group com SSH restrito ao seu IP.
 - Nunca abrir `3000`, `3001`, `3306` ou `33060` publicamente.
 
@@ -156,16 +158,23 @@ Valores esperados em producao publica:
 
 ## Smoke test
 
-Rodar na EC2 ou da sua maquina:
+Rodar na EC2 ou da sua maquina contra AWS/IP publico:
 
 ```bash
-BASE_URL=http://3.18.213.49 EXPECT_PREVIEW_BYPASS=true bash scripts/smoke-aws-security.sh
+BASE_URL=http://3.18.213.49 EXPECT_PREVIEW_BYPASS=false bash scripts/smoke-aws-security.sh
 ```
 
-Para producao publica, o mesmo teste deve recusar `dev-token`:
+Para producao publica, o mesmo teste deve continuar recusando `dev-token`:
 
 ```bash
 BASE_URL=https://seu-dominio EXPECT_PREVIEW_BYPASS=false bash scripts/smoke-aws-security.sh
+```
+
+O caminho com `EXPECT_PREVIEW_BYPASS=true` existe apenas para validar o fluxo
+local iniciado por `npm run dev:local-token`, por exemplo:
+
+```bash
+BASE_URL=http://127.0.0.1:3000 EXPECT_PREVIEW_BYPASS=true bash scripts/smoke-aws-security.sh
 ```
 
 ## Criterios minimos para ir online
@@ -176,6 +185,6 @@ BASE_URL=https://seu-dominio EXPECT_PREVIEW_BYPASS=false bash scripts/smoke-aws-
 - `/health/live` responde `200`.
 - `/health/ready` responde `200`.
 - rota interna sem Bearer responde `401`.
-- em producao publica, `dev-token` nao gera sessao.
+- fora de localhost/loopback, `dev-token` nao gera sessao.
 - MySQL esta em `127.0.0.1:3306`.
 - Security Group nao expoe `3000`, `3001`, `3306`, `33060`.
