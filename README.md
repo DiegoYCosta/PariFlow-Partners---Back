@@ -137,8 +137,17 @@ npm.cmd run dev:local-token
 ```
 
 Esse modo prende o back em loopback, define `NODE_ENV=development` e habilita
-`DEV_AUTH_BYPASS=true` somente no processo atual. Em AWS/publico, mantenha
-`DEV_AUTH_BYPASS=false`, `PREVIEW_AUTH_BYPASS=false` e use Firebase Admin real.
+`DEV_AUTH_BYPASS=true` somente no processo atual. Ele tambem sobe o MySQL local
+isolado do projeto em `127.0.0.1:3308` e aplica migrations antes de iniciar a
+API. Em AWS/publico, mantenha `DEV_AUTH_BYPASS=false`,
+`PREVIEW_AUTH_BYPASS=false` e use Firebase Admin real.
+
+Com o back local ativo, suba o front em outro terminal:
+
+```powershell
+cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Front"
+.\scripts\run-web-local.ps1 -UseDevToken
+```
 
 Swagger local:
 

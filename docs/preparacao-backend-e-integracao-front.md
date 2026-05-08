@@ -56,6 +56,21 @@ a localhost/loopback com `NODE_ENV` nao-producao e bypass explicito. Homologacao
 por IP e producao publica exigem Firebase Admin configurado, build com
 `PARIFLOW_ENABLE_DEV_TOKEN=false` e bypass desligado.
 
+Para teste local sem Firebase real, a ordem operacional e:
+
+```powershell
+cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Back"
+npm.cmd run dev:local-token
+```
+
+```powershell
+cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Front"
+.\scripts\run-web-local.ps1 -UseDevToken
+```
+
+O comando do back usa o MySQL local isolado em `127.0.0.1:3308`, aplica
+migrations e nao altera AWS nem banco real.
+
 ## Roadmap Real
 
 ### Fase 1. Homologacao AWS

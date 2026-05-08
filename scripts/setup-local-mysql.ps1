@@ -38,15 +38,21 @@ if (-not $listening) {
 
 $ready = $false
 $previousMysqlPwd = $env:MYSQL_PWD
+$previousNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
 $env:MYSQL_PWD = $password
+$PSNativeCommandUseErrorActionPreference = $false
 
-for ($i = 0; $i -lt 30; $i++) {
-  Start-Sleep -Seconds 1
-  & $mysql --protocol=TCP -h 127.0.0.1 -P 3308 -u $appUser -e "SELECT 1" $database 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) {
-    $ready = $true
-    break
+try {
+  for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    & $mysql --protocol=TCP -h 127.0.0.1 -P 3308 -u $appUser -e "SELECT 1" $database 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+      $ready = $true
+      break
+    }
   }
+} finally {
+  $PSNativeCommandUseErrorActionPreference = $previousNativeErrorPreference
 }
 
 if ($null -eq $previousMysqlPwd) {
