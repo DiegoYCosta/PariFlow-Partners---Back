@@ -16,6 +16,7 @@ Use somente para homologacao curta e controlada.
 - `COOKIE_SECURE=false`, porque ainda nao ha HTTPS.
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
+- `SWAGGER_ENABLED=false`
 - `dev-token` nao deve ser aceito em IP publico; use Firebase Admin e usuario
   real tambem na homologacao por IP.
 - Security Group com SSH restrito ao seu IP.
@@ -33,9 +34,13 @@ Use somente depois de dominio, HTTPS e Firebase Admin configurados.
 - `COOKIE_SECURE=true`
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
+- `SWAGGER_ENABLED=false`
 - Firebase Admin preenchido.
 - Bucket S3 privado preenchido quando anexos reais forem ativados.
-- Swagger restrito por IP ou desabilitado no Apache.
+- Swagger desabilitado no NestJS. Se precisar reabrir futuramente, publicar
+  somente atras de protecao explicita.
+- `npm ci --omit=optional` no deploy para nao instalar Firestore/Storage
+  opcionais do Firebase Admin enquanto o backend usa somente Firebase Auth.
 
 Arquivo local recomendado: `.env.aws.production`, ignorado pelo Git. Nao
 promover preview para producao sem dominio, HTTPS, Firebase Admin e bypass
@@ -99,7 +104,7 @@ Usar `apache/pariflow-back.conf.example` como base para:
 - apontar `/api` para `127.0.0.1:3001`;
 - apontar `/` para `127.0.0.1:3000`;
 - enviar headers basicos de seguranca;
-- restringir `/api/docs` por IP antes de producao publica.
+- confirmar que `/api/docs` nao responde em producao.
 
 Validacao:
 
@@ -143,7 +148,7 @@ openssl rand -base64 48
 Checar variaveis sem mostrar valores:
 
 ```bash
-grep -E '^(NODE_ENV|HOST|PORT|APP_URL|CORS_ORIGINS|COOKIE_SECURE|PREVIEW_AUTH_BYPASS|DEV_AUTH_BYPASS|DB_HOST|DB_NAME|FIREBASE_PROJECT_ID|S3_BUCKET_PRIVATE)=' .env
+grep -E '^(NODE_ENV|HOST|PORT|APP_URL|CORS_ORIGINS|COOKIE_SECURE|PREVIEW_AUTH_BYPASS|DEV_AUTH_BYPASS|SWAGGER_ENABLED|DB_HOST|DB_NAME|FIREBASE_PROJECT_ID|S3_BUCKET_PRIVATE)=' .env
 ```
 
 Valores esperados em producao publica:
@@ -155,6 +160,7 @@ Valores esperados em producao publica:
 - `COOKIE_SECURE=true`
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
+- `SWAGGER_ENABLED=false`
 
 ## Smoke test
 
@@ -186,5 +192,6 @@ BASE_URL=http://127.0.0.1:3000 EXPECT_PREVIEW_BYPASS=true bash scripts/smoke-aws
 - `/health/ready` responde `200`.
 - rota interna sem Bearer responde `401`.
 - fora de localhost/loopback, `dev-token` nao gera sessao.
+- `/api/docs` nao responde em producao.
 - MySQL esta em `127.0.0.1:3306`.
 - Security Group nao expoe `3000`, `3001`, `3306`, `33060`.

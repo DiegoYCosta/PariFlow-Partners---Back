@@ -90,6 +90,7 @@ const environmentSchema = z.object({
   COOKIE_SECURE: booleanFromEnv.default(false),
   DEV_AUTH_BYPASS: booleanFromEnv.default(false),
   PREVIEW_AUTH_BYPASS: booleanFromEnv.default(false),
+  SWAGGER_ENABLED: booleanFromEnv.optional(),
   TRUST_PROXY: booleanFromEnv.default(false),
   FIREBASE_PROJECT_ID: optionalStringFromEnv,
   FIREBASE_CLIENT_EMAIL: optionalStringFromEnv,
@@ -103,8 +104,56 @@ const environmentSchema = z.object({
   SEED_ENABLE_SAMPLE_DATA: booleanFromEnv.default(false)
 });
 
-export type Env = z.infer<typeof environmentSchema>;
-export const env: Env = environmentSchema.parse(process.env);
+type ParsedEnv = z.infer<typeof environmentSchema>;
+export type Env = Omit<ParsedEnv, 'SWAGGER_ENABLED'> & {
+  SWAGGER_ENABLED: boolean;
+};
+
+function assertProductionEnvIsSafe(parsedEnv: ParsedEnv) {
+  if (parsedEnv.NODE_ENV !== 'production') {
+    return;
+  }
+
+  const unsafeSettings: string[] = [];
+
+  if (parsedEnv.DEV_AUTH_BYPASS) {
+    unsafeSettings.push('DEV_AUTH_BYPASS=true');
+  }
+
+  if (parsedEnv.PREVIEW_AUTH_BYPASS) {
+    unsafeSettings.push('PREVIEW_AUTH_BYPASS=true');
+  }
+
+  if (parsedEnv.SWAGGER_ENABLED) {
+    unsafeSettings.push('SWAGGER_ENABLED=true');
+  }
+
+  if (parsedEnv.SEED_ENABLE_SAMPLE_DATA) {
+    unsafeSettings.push('SEED_ENABLE_SAMPLE_DATA=true');
+  }
+
+  if (parsedEnv.JWT_ACCESS_SECRET.startsWith('change-this-')) {
+    unsafeSettings.push('JWT_ACCESS_SECRET padrao');
+  }
+
+  if (parsedEnv.JWT_REFRESH_SECRET.startsWith('change-this-')) {
+    unsafeSettings.push('JWT_REFRESH_SECRET padrao');
+  }
+
+  if (unsafeSettings.length > 0) {
+    throw new Error(
+      `Configuracao insegura para producao: ${unsafeSettings.join(', ')}.`
+    );
+  }
+}
+
+const parsedEnv = environmentSchema.parse(process.env);
+assertProductionEnvIsSafe(parsedEnv);
+
+export const env: Env = {
+  ...parsedEnv,
+  SWAGGER_ENABLED: parsedEnv.SWAGGER_ENABLED ?? parsedEnv.NODE_ENV !== 'production'
+};
 export const databaseUrl = buildDatabaseUrlFromEnv(env);
 
 if (databaseUrl && !process.env.DATABASE_URL) {

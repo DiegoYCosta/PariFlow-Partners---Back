@@ -57,24 +57,28 @@ async function bootstrap() {
   });
   app.enableShutdownHooks();
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('PariFlow Partners API')
-    .setDescription(
-      'API interna do PariFlow Partners para autenticacao, cadastros e evolucao dos modulos operacionais.'
-    )
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
+  if (env.SWAGGER_ENABLED) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('PariFlow Partners API')
+      .setDescription(
+        'API interna do PariFlow Partners para autenticacao, cadastros e evolucao dos modulos operacionais.'
+      )
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  // Enquanto o front estiver entrando por partes, o Swagger precisa continuar
-  // espelhando o contrato real para reduzir ajuste manual e retrabalho.
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(env.PORT, env.HOST);
 
   logger.log(`HTTP ativo em http://${env.HOST}:${env.PORT}`);
-  logger.log(`Swagger ativo em http://${env.HOST}:${env.PORT}/api/docs`);
+  if (env.SWAGGER_ENABLED) {
+    logger.log(`Swagger ativo em http://${env.HOST}:${env.PORT}/api/docs`);
+  } else {
+    logger.log('Swagger desabilitado neste ambiente');
+  }
 }
 
 void bootstrap();
