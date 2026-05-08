@@ -1,4 +1,9 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException
+} from '@nestjs/common';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { env } from '../../config/env';
@@ -23,7 +28,16 @@ export class FirebaseAdminService {
       );
     }
 
-    return getAuth(this.getOrCreateApp()).verifyIdToken(idToken);
+    try {
+      return await getAuth(this.getOrCreateApp()).verifyIdToken(idToken);
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code)
+          : 'unknown';
+      this.logger.warn(`Firebase ID Token recusado: ${code}`);
+      throw new UnauthorizedException('Firebase ID Token invalido ou expirado.');
+    }
   }
 
   private getOrCreateApp(): App {

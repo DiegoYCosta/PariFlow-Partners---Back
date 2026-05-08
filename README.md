@@ -172,9 +172,18 @@ Para liberar login online:
 Scripts:
 
 ```powershell
+# aplica no .env local do backend
 .\scripts\apply-firebase-admin-env.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
 npm.cmd run user:grant-admin -- --email "admin@empresa.com" --firebaseUid "uid" --name "Administrador"
+
+# aplica na EC2 sem imprimir a private key
+.\scripts\apply-firebase-admin-aws.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
+.\scripts\grant-admin-aws.ps1 -Email "admin@empresa.com" -FirebaseUid "uid" -Name "Administrador"
 ```
+
+Estado verificado em 2026-05-08: a EC2 ja responde health, mas ainda esta sem
+`FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY`; por isso login real online
+fica bloqueado ate aplicar o Service Account.
 
 ## Seed
 
