@@ -23,7 +23,14 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   await app.register(cookie as never);
-  await app.register(helmet as never);
+  await app.register(helmet as never, {
+    frameguard: {
+      action: 'deny'
+    },
+    referrerPolicy: {
+      policy: 'strict-origin-when-cross-origin'
+    }
+  });
   const productionCorsOrigins = env.CORS_ORIGINS ?? (
     env.APP_URL ? [env.APP_URL] : []
   );

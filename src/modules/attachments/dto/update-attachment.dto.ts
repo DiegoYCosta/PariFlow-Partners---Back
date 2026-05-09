@@ -6,12 +6,15 @@ import {
 import { Transform } from 'class-transformer';
 import {
   ArrayUnique,
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
+  Matches,
   MaxLength
 } from 'class-validator';
 
@@ -54,6 +57,7 @@ export class UpdateAttachmentDto {
     typeof value === 'string' ? value.trim() : value
   )
   @IsString()
+  @Matches(/^[^\\/:*?"<>|\r\n]+$/)
   @MaxLength(180)
   fileName?: string;
 
@@ -65,6 +69,7 @@ export class UpdateAttachmentDto {
     typeof value === 'string' ? value.trim() : value
   )
   @IsString()
+  @Matches(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i)
   @MaxLength(120)
   mimeType?: string;
 
@@ -76,6 +81,7 @@ export class UpdateAttachmentDto {
     typeof value === 'string' ? value.trim() : value
   )
   @IsString()
+  @Matches(/^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._~/-]+$/)
   @MaxLength(255)
   storagePath?: string;
 
@@ -87,6 +93,7 @@ export class UpdateAttachmentDto {
     typeof value === 'string' ? value.trim() : value
   )
   @IsString()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
   @MaxLength(255)
   externalLink?: string;
 
@@ -128,6 +135,7 @@ export class UpdateAttachmentDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(10)
   @ArrayUnique()
   @IsEnum(SensitiveAudienceGroup, { each: true })
   allowedGroupKeys?: SensitiveAudienceGroup[];
@@ -144,6 +152,7 @@ export class UpdateAttachmentDto {
       : value
   )
   @IsArray()
+  @ArrayMaxSize(20)
   @ArrayUnique()
   @IsString({ each: true })
   @IsNotEmpty({ each: true })

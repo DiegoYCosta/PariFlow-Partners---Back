@@ -48,6 +48,12 @@ google-credentials*.json
 *.key
 *.p12
 *.pfx
+*.zip
+*.7z
+*.rar
+*.sql
+!prisma/migrations/**/migration.sql
+*.dump
 
 # Local databases
 prisma/*.db

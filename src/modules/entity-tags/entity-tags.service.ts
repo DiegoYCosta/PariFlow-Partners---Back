@@ -13,6 +13,7 @@ import {
   SensitiveAudienceGroup
 } from '@prisma/client';
 import { createPublicId } from '../../common/utils/public-id';
+import { assertPublicSubmissionAllowed } from '../../common/utils/public-submission';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
@@ -40,7 +41,11 @@ type EntityTagWithRelations = Prisma.EntityTagGetPayload<{
 export class EntityTagsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async createSubmission(dto: CreateEntityTagSubmissionDto) {
+  async createSubmission(
+    dto: CreateEntityTagSubmissionDto,
+    publicSubmissionToken?: string
+  ) {
+    assertPublicSubmissionAllowed(publicSubmissionToken);
     this.prisma.assertConfigured();
 
     const [target, ownerUserId, allowedUserIds] = await Promise.all([

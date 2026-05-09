@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Inject,
   Param,
   Patch,
@@ -37,8 +38,15 @@ export class AttachmentsController {
     summary:
       'Recebe submissao publica de anexo protegido ligado a uma ocorrencia.'
   })
-  createSubmission(@Body() dto: CreateAttachmentSubmissionDto) {
-    return this.attachmentsService.createSubmission(dto);
+  createSubmission(
+    @Body() dto: CreateAttachmentSubmissionDto,
+    @Headers('x-pariflow-public-submission-token')
+    publicSubmissionToken?: string | string[]
+  ) {
+    return this.attachmentsService.createSubmission(
+      dto,
+      normalizeHeader(publicSubmissionToken)
+    );
   }
 
   @Post()
@@ -110,4 +118,8 @@ export class AttachmentsController {
   ) {
     return this.attachmentsService.remove(publicId, request.user!);
   }
+}
+
+function normalizeHeader(value?: string | string[]): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }

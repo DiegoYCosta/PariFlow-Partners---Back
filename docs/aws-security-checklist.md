@@ -9,7 +9,10 @@ precisa mudar quando a API nao estiver no mesmo host, usando
 
 ### Preview privado por IP
 
-Use somente para homologacao curta e controlada.
+Use somente para homologacao curta e controlada. Estado atual verificado em
+`2026-05-08`: front abre por HTTP no IP, `/health/live` responde, rotas
+protegidas sem token retornam `401`, `dev-token` nao gera sessao em host
+publico e `/api/docs` retorna `404`.
 
 - `APP_URL=http://3.18.213.49`
 - `CORS_ORIGINS=http://3.18.213.49`
@@ -17,10 +20,13 @@ Use somente para homologacao curta e controlada.
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
 - `SWAGGER_ENABLED=false`
+- `PUBLIC_SUBMISSIONS_ENABLED=false`
 - `dev-token` nao deve ser aceito em IP publico; use Firebase Admin e usuario
   real tambem na homologacao por IP.
 - Security Group com SSH restrito ao seu IP.
 - Nunca abrir `3000`, `3001`, `3306` ou `33060` publicamente.
+- `SEED_ENABLE_SAMPLE_DATA=false`
+- JWT secrets nao podem usar `change-this-*`.
 
 Arquivo local recomendado: `.env.aws.preview`, ignorado pelo Git. Na EC2, o
 conteudo final deve ficar em `.env` no diretorio do backend.
@@ -35,6 +41,7 @@ Use somente depois de dominio, HTTPS e Firebase Admin configurados.
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
 - `SWAGGER_ENABLED=false`
+- `SEED_ENABLE_SAMPLE_DATA=false`
 - Firebase Admin preenchido.
 - Bucket S3 privado preenchido quando anexos reais forem ativados.
 - Swagger desabilitado no NestJS. Se precisar reabrir futuramente, publicar
@@ -148,7 +155,10 @@ openssl rand -base64 48
 Checar variaveis sem mostrar valores:
 
 ```bash
-grep -E '^(NODE_ENV|HOST|PORT|APP_URL|CORS_ORIGINS|COOKIE_SECURE|PREVIEW_AUTH_BYPASS|DEV_AUTH_BYPASS|SWAGGER_ENABLED|DB_HOST|DB_NAME|FIREBASE_PROJECT_ID|S3_BUCKET_PRIVATE)=' .env
+for key in NODE_ENV HOST PORT APP_URL CORS_ORIGINS COOKIE_SECURE PREVIEW_AUTH_BYPASS DEV_AUTH_BYPASS SWAGGER_ENABLED PUBLIC_SUBMISSIONS_ENABLED DB_HOST DB_NAME FIREBASE_PROJECT_ID FIREBASE_CLIENT_EMAIL FIREBASE_PRIVATE_KEY S3_BUCKET_PRIVATE; do
+  value="$(grep -E "^${key}=" .env | tail -n 1 | cut -d= -f2-)"
+  if [ -n "$value" ]; then echo "$key=set"; else echo "$key=empty"; fi
+done
 ```
 
 Valores esperados em producao publica:
@@ -161,6 +171,20 @@ Valores esperados em producao publica:
 - `PREVIEW_AUTH_BYPASS=false`
 - `DEV_AUTH_BYPASS=false`
 - `SWAGGER_ENABLED=false`
+- `PUBLIC_SUBMISSIONS_ENABLED=false`
+
+Aplicar Firebase Admin na EC2 a partir da maquina Windows, sem imprimir a
+private key:
+
+```powershell
+cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Back"
+.\scripts\apply-firebase-admin-aws.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
+.\scripts\grant-admin-aws.ps1 -Email "admin@empresa.com" -FirebaseUid "uid" -Name "Administrador"
+```
+
+Estado verificado em 2026-05-08: `FIREBASE_PROJECT_ID=set`,
+`FIREBASE_CLIENT_EMAIL=set` e `FIREBASE_PRIVATE_KEY=set`, sem exibir valores.
+Ainda faltam usuario real, perfil interno e smoke de login real ponta a ponta.
 
 ## Smoke test
 

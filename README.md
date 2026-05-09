@@ -105,6 +105,11 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 - `POST /api/v1/anexos/submissions`
 - `GET /api/v1/network/graph`
 
+As rotas `*/submissions` ficam desligadas por padrao com
+`PUBLIC_SUBMISSIONS_ENABLED=false`. Se forem habilitadas futuramente, producao
+exige `PUBLIC_SUBMISSION_TOKEN` e o cliente deve enviar
+`X-PariFlow-Public-Submission-Token`.
+
 ## Integracao com o Front
 
 O front consome API real para:
@@ -181,9 +186,9 @@ npm.cmd run user:grant-admin -- --email "admin@empresa.com" --firebaseUid "uid" 
 .\scripts\grant-admin-aws.ps1 -Email "admin@empresa.com" -FirebaseUid "uid" -Name "Administrador"
 ```
 
-Estado verificado em 2026-05-08: a EC2 ja responde health, mas ainda esta sem
-`FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY`; por isso login real online
-fica bloqueado ate aplicar o Service Account.
+Estado verificado em 2026-05-08: Service Account Firebase Admin aplicado na
+EC2 sem expor private key. Ainda faltam usuario real, perfil interno e smoke de
+login real ponta a ponta.
 
 ## Seed
 
@@ -199,7 +204,7 @@ Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
 ## Pendencias Reais
 
 1. Configurar dominio e HTTPS.
-2. Configurar Firebase Admin na EC2 e criar usuarios reais.
+2. Criar usuarios reais e conceder perfis internos.
 3. Integrar o front ao refresh/logout quando a UX de sessao for fechada.
 4. Completar sensitive-session/step-up.
 5. Ligar storage privado e download rastreavel para anexos sensiveis.

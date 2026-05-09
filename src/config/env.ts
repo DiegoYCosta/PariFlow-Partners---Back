@@ -98,6 +98,8 @@ const environmentSchema = z.object({
   AWS_REGION: z.string().min(1).default('sa-east-1'),
   S3_BUCKET_PRIVATE: optionalStringFromEnv,
   SENSITIVE_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(10),
+  PUBLIC_SUBMISSIONS_ENABLED: booleanFromEnv.default(false),
+  PUBLIC_SUBMISSION_TOKEN: optionalStringFromEnv,
   SEED_ADMIN_NAME: optionalStringFromEnv,
   SEED_ADMIN_EMAIL: optionalEmailFromEnv,
   SEED_ADMIN_FIREBASE_UID: optionalStringFromEnv,
@@ -132,12 +134,36 @@ function assertProductionEnvIsSafe(parsedEnv: ParsedEnv) {
     unsafeSettings.push('SEED_ENABLE_SAMPLE_DATA=true');
   }
 
+  if (parsedEnv.HOST === '0.0.0.0' || parsedEnv.HOST === '::') {
+    unsafeSettings.push('HOST publico em producao');
+  }
+
   if (parsedEnv.JWT_ACCESS_SECRET.startsWith('change-this-')) {
     unsafeSettings.push('JWT_ACCESS_SECRET padrao');
   }
 
   if (parsedEnv.JWT_REFRESH_SECRET.startsWith('change-this-')) {
     unsafeSettings.push('JWT_REFRESH_SECRET padrao');
+  }
+
+  if (parsedEnv.JWT_ACCESS_SECRET === parsedEnv.JWT_REFRESH_SECRET) {
+    unsafeSettings.push('JWT_ACCESS_SECRET igual a JWT_REFRESH_SECRET');
+  }
+
+  if (
+    parsedEnv.APP_URL?.startsWith('https://') &&
+    parsedEnv.COOKIE_SECURE === false
+  ) {
+    unsafeSettings.push('COOKIE_SECURE=false com APP_URL HTTPS');
+  }
+
+  if (
+    parsedEnv.PUBLIC_SUBMISSIONS_ENABLED &&
+    !parsedEnv.PUBLIC_SUBMISSION_TOKEN
+  ) {
+    unsafeSettings.push(
+      'PUBLIC_SUBMISSIONS_ENABLED=true sem PUBLIC_SUBMISSION_TOKEN'
+    );
   }
 
   if (unsafeSettings.length > 0) {

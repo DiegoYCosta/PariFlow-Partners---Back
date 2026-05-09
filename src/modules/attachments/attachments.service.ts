@@ -13,6 +13,7 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import { createPublicId } from '../../common/utils/public-id';
+import { assertPublicSubmissionAllowed } from '../../common/utils/public-submission';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
@@ -38,7 +39,11 @@ type AttachmentWithRelations = Prisma.AttachmentGetPayload<{
 export class AttachmentsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async createSubmission(dto: CreateAttachmentSubmissionDto) {
+  async createSubmission(
+    dto: CreateAttachmentSubmissionDto,
+    publicSubmissionToken?: string
+  ) {
+    assertPublicSubmissionAllowed(publicSubmissionToken);
     this.prisma.assertConfigured();
 
     const [occurrenceId, ownerUserId, allowedUserIds] = await Promise.all([

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Inject,
   Param,
   Patch,
@@ -37,8 +38,15 @@ export class EntityTagsController {
     summary:
       'Recebe submissao publica de tag sensivel para pessoa ou empresa prestadora.'
   })
-  createSubmission(@Body() dto: CreateEntityTagSubmissionDto) {
-    return this.entityTagsService.createSubmission(dto);
+  createSubmission(
+    @Body() dto: CreateEntityTagSubmissionDto,
+    @Headers('x-pariflow-public-submission-token')
+    publicSubmissionToken?: string | string[]
+  ) {
+    return this.entityTagsService.createSubmission(
+      dto,
+      normalizeHeader(publicSubmissionToken)
+    );
   }
 
   @Post()
@@ -110,4 +118,8 @@ export class EntityTagsController {
   ) {
     return this.entityTagsService.remove(publicId, request.user!);
   }
+}
+
+function normalizeHeader(value?: string | string[]): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }

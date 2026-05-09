@@ -7,6 +7,7 @@ import {
 import { Transform } from 'class-transformer';
 import {
   ArrayUnique,
+  ArrayMaxSize,
   IsArray,
   IsEnum,
   IsInt,
@@ -95,6 +96,7 @@ export class CreateEntityTagSubmissionDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(10)
   @ArrayUnique()
   @IsEnum(SensitiveAudienceGroup, { each: true })
   allowedGroupKeys?: SensitiveAudienceGroup[];
@@ -113,6 +115,7 @@ export class CreateEntityTagSubmissionDto {
       : value
   )
   @IsArray()
+  @ArrayMaxSize(20)
   @ArrayUnique()
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
