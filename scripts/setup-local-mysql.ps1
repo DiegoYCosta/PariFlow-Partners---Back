@@ -45,10 +45,15 @@ $PSNativeCommandUseErrorActionPreference = $false
 try {
   for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
-    & $mysql --protocol=TCP -h 127.0.0.1 -P 3308 -u $appUser -e "SELECT 1" $database 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-      $ready = $true
-      break
+    try {
+      & $mysql --protocol=TCP -h 127.0.0.1 -P 3308 -u $appUser -e "SELECT 1" $database 2>$null | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        $ready = $true
+        break
+      }
+    } catch {
+      # MySQL can refuse TCP connections for a few seconds while the local
+      # instance is starting. Keep polling until the readiness window expires.
     }
   }
 } finally {

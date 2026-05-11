@@ -109,30 +109,74 @@ enum SecurityEventType {
   ACCESS_DENIED
 }
 
-model UserSystem {
-  id                 BigInt                   @id @default(autoincrement())
-  publicId           String                   @unique @db.VarChar(26)
-  firebaseUid        String?                  @unique @db.VarChar(128)
-  name               String                   @db.VarChar(160)
-  email              String                   @unique @db.VarChar(180)
-  status             UserSystemStatus         @default(ACTIVE)
-  mfaEnabled         Boolean                  @default(false)
-  lastAccessAt       DateTime?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  accessProfiles     UserAccessProfile[]
-  refreshTokens      RefreshToken[]
-  securityEvents     SecurityEvent[]
-  sensitiveAccess    SensitiveSession[]
-  auditLogs          AuditLog[]
-  createdEntityTags  EntityTag[]              @relation("EntityTagCreatedBy")
-  removedEntityTags  EntityTag[]              @relation("EntityTagRemovedBy")
-  ownedEntityTags    EntityTag[]              @relation("EntityTagOwnedBy")
-  ownedAttachments   Attachment[]             @relation("AttachmentOwnedBy")
-  createdAttachments Attachment[]             @relation("AttachmentCreatedBy")
-  entityTagAudience  EntityTagAudienceUser[]
-  attachmentAudience AttachmentAudienceUser[]
+enum CalendarEntryKind {
+  REMINDER
+  APPOINTMENT
+}
 
+enum CalendarEntryStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  MISSED
+}
+
+enum CalendarEntryPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum CalendarBusinessDayPolicy {
+  ALLOW_NON_BUSINESS_DAY
+  REQUIRE_BUSINESS_DAY
+  MOVE_TO_PREVIOUS_BUSINESS_DAY
+  MOVE_TO_NEXT_BUSINESS_DAY
+}
+
+enum CalendarEntryTargetType {
+  GENERAL
+  PERSON
+  PROVIDER_COMPANY
+  CLIENT_COMPANY
+  CONTRACT
+  EMPLOYMENT_LINK
+  POSITION
+}
+
+model UserSystem {
+  id                      BigInt                   @id @default(autoincrement())
+  publicId                String                   @unique @db.VarChar(26)
+  firebaseUid             String?                  @unique @db.VarChar(128)
+  providerCompanyId       BigInt?
+  clientCompanyId         BigInt?
+  name                    String                   @db.VarChar(160)
+  email                   String                   @unique @db.VarChar(180)
+  status                  UserSystemStatus         @default(ACTIVE)
+  mfaEnabled              Boolean                  @default(false)
+  lastAccessAt            DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  accessProfiles          UserAccessProfile[]
+  refreshTokens           RefreshToken[]
+  securityEvents          SecurityEvent[]
+  sensitiveAccess         SensitiveSession[]
+  auditLogs               AuditLog[]
+  createdEntityTags       EntityTag[]              @relation("EntityTagCreatedBy")
+  removedEntityTags       EntityTag[]              @relation("EntityTagRemovedBy")
+  ownedEntityTags         EntityTag[]              @relation("EntityTagOwnedBy")
+  ownedAttachments        Attachment[]             @relation("AttachmentOwnedBy")
+  createdAttachments      Attachment[]             @relation("AttachmentCreatedBy")
+  entityTagAudience       EntityTagAudienceUser[]
+  attachmentAudience      AttachmentAudienceUser[]
+  providerCompany         ProviderCompany?         @relation("UserSystemProviderCompany", fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
+  assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
+
+  @@index([providerCompanyId])
+  @@index([clientCompanyId])
   @@map("usuario_sistema")
 }
 
@@ -165,36 +209,40 @@ model UserAccessProfile {
 }
 
 model ProviderCompany {
-  id           BigInt           @id @default(autoincrement())
-  publicId     String           @unique @db.VarChar(26)
-  legalName    String           @db.VarChar(180)
-  tradeName    String?          @db.VarChar(180)
-  document     String           @unique @db.VarChar(20)
-  status       String           @db.VarChar(30)
-  contactsJson Json?
-  notes        String?          @db.Text
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  contracts    Contract[]
-  links        EmploymentLink[]
-  occurrences  Occurrence[]
-  entityTags   EntityTag[]
+  id              BigInt           @id @default(autoincrement())
+  publicId        String           @unique @db.VarChar(26)
+  legalName       String           @db.VarChar(180)
+  tradeName       String?          @db.VarChar(180)
+  document        String           @unique @db.VarChar(20)
+  status          String           @db.VarChar(30)
+  contactsJson    Json?
+  notes           String?          @db.Text
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  contracts       Contract[]
+  links           EmploymentLink[]
+  occurrences     Occurrence[]
+  entityTags      EntityTag[]
+  userSystems     UserSystem[]     @relation("UserSystemProviderCompany")
+  calendarEntries CalendarEntry[]
 
   @@map("empresa_prestadora")
 }
 
 model ClientCompany {
-  id          BigInt     @id @default(autoincrement())
-  publicId    String     @unique @db.VarChar(26)
-  name        String     @db.VarChar(180)
-  document    String?    @db.VarChar(20)
-  clientType  String     @db.VarChar(60)
-  addressJson Json?
-  contactName String?    @db.VarChar(160)
-  status      String     @db.VarChar(30)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  contracts   Contract[]
+  id              BigInt          @id @default(autoincrement())
+  publicId        String          @unique @db.VarChar(26)
+  name            String          @db.VarChar(180)
+  document        String?         @db.VarChar(20)
+  clientType      String          @db.VarChar(60)
+  addressJson     Json?
+  contactName     String?         @db.VarChar(160)
+  status          String          @db.VarChar(30)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  contracts       Contract[]
+  userSystems     UserSystem[]    @relation("UserSystemClientCompany")
+  calendarEntries CalendarEntry[]
 
   @@map("cliente_contratante")
 }
@@ -219,6 +267,7 @@ model Contract {
   documents         ContractDocument[]
   positions         Position[]
   links             EmploymentLink[]
+  calendarEntries   CalendarEntry[]
 
   @@map("contrato")
 }
@@ -288,39 +337,41 @@ model ServiceCatalog {
 }
 
 model Position {
-  id           BigInt           @id @default(autoincrement())
-  publicId     String           @unique @db.VarChar(26)
-  contractId   BigInt
-  serviceId    BigInt
-  name         String           @db.VarChar(160)
-  location     String?          @db.VarChar(180)
-  shift        String?          @db.VarChar(120)
-  schedule     String?          @db.VarChar(120)
-  requirements String?          @db.Text
-  status       String           @db.VarChar(30)
-  contract     Contract         @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  service      ServiceCatalog   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  links        EmploymentLink[]
-  occurrences  Occurrence[]
+  id              BigInt           @id @default(autoincrement())
+  publicId        String           @unique @db.VarChar(26)
+  contractId      BigInt
+  serviceId       BigInt
+  name            String           @db.VarChar(160)
+  location        String?          @db.VarChar(180)
+  shift           String?          @db.VarChar(120)
+  schedule        String?          @db.VarChar(120)
+  requirements    String?          @db.Text
+  status          String           @db.VarChar(30)
+  contract        Contract         @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  service         ServiceCatalog   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  links           EmploymentLink[]
+  occurrences     Occurrence[]
+  calendarEntries CalendarEntry[]
 
   @@map("posto_ou_vaga")
 }
 
 model Person {
-  id            BigInt           @id @default(autoincrement())
-  publicId      String           @unique @db.VarChar(26)
-  name          String           @db.VarChar(160)
-  cpf           String?          @unique @db.VarChar(14)
-  rg            String?          @db.VarChar(30)
-  email         String?          @db.VarChar(180)
-  phone         String?          @db.VarChar(30)
-  birthDate     DateTime?
-  addressJson   Json?
-  notes         String?          @db.Text
-  externalWorks ExternalWork[]
-  links         EmploymentLink[]
-  occurrences   Occurrence[]
-  entityTags    EntityTag[]
+  id              BigInt           @id @default(autoincrement())
+  publicId        String           @unique @db.VarChar(26)
+  name            String           @db.VarChar(160)
+  cpf             String?          @unique @db.VarChar(14)
+  rg              String?          @db.VarChar(30)
+  email           String?          @db.VarChar(180)
+  phone           String?          @db.VarChar(30)
+  birthDate       DateTime?
+  addressJson     Json?
+  notes           String?          @db.Text
+  externalWorks   ExternalWork[]
+  links           EmploymentLink[]
+  occurrences     Occurrence[]
+  entityTags      EntityTag[]
+  calendarEntries CalendarEntry[]
 
   @@map("pessoa")
 }
@@ -359,6 +410,7 @@ model EmploymentLink {
   moves             EmploymentMove[]
   dismissal         Dismissal?
   occurrences       Occurrence[]
+  calendarEntries   CalendarEntry[]
 
   @@map("vinculo")
 }
@@ -542,6 +594,55 @@ model DocumentReceipt {
   occurrence   Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
 
   @@map("recebimento_documento")
+}
+
+model CalendarEntry {
+  id                     BigInt                    @id @default(autoincrement())
+  publicId               String                    @unique @db.VarChar(26)
+  kind                   CalendarEntryKind
+  status                 CalendarEntryStatus       @default(SCHEDULED)
+  priority               CalendarEntryPriority     @default(NORMAL)
+  targetType             CalendarEntryTargetType   @default(GENERAL)
+  title                  String                    @db.VarChar(180)
+  description            String?                   @db.Text
+  startsAt               DateTime
+  endsAt                 DateTime?
+  timezone               String                    @default("America/Sao_Paulo") @db.VarChar(64)
+  isAllDay               Boolean                   @default(false)
+  businessDayPolicy      CalendarBusinessDayPolicy @default(ALLOW_NON_BUSINESS_DAY)
+  holidayRegionCode      String?                   @db.VarChar(40)
+  personId               BigInt?
+  providerCompanyId      BigInt?
+  clientCompanyId        BigInt?
+  contractId             BigInt?
+  employmentLinkId       BigInt?
+  positionId             BigInt?
+  createdByUserSystemId  BigInt?
+  assignedToUserSystemId BigInt?
+  completedAt            DateTime?
+  canceledAt             DateTime?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  person                 Person?                   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  providerCompany        ProviderCompany?          @relation(fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  clientCompany          ClientCompany?            @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  contract               Contract?                 @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  employmentLink         EmploymentLink?           @relation(fields: [employmentLinkId], references: [id], onDelete: SetNull)
+  position               Position?                 @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  createdByUserSystem    UserSystem?               @relation("CalendarEntryCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+  assignedToUserSystem   UserSystem?               @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt, status])
+  @@index([kind, startsAt])
+  @@index([personId, startsAt])
+  @@index([providerCompanyId, startsAt])
+  @@index([clientCompanyId, startsAt])
+  @@index([contractId, startsAt])
+  @@index([employmentLinkId, startsAt])
+  @@index([positionId, startsAt])
+  @@index([createdByUserSystemId, startsAt])
+  @@index([assignedToUserSystemId, startsAt])
+  @@map("agenda_item")
 }
 
 model RefreshToken {
