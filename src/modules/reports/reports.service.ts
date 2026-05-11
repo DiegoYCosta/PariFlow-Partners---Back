@@ -1697,7 +1697,10 @@ export class ReportsService {
   private calendarKindFilter(
     filters: Record<string, unknown>,
   ): CalendarEntryKind | undefined {
-    const option = this.normalized(this.filterValue(filters, "Tipo"));
+    const option = this.normalized(
+      this.filterValue(filters, "Tipo de agenda") ??
+        this.filterValue(filters, "Tipo"),
+    );
     if (!option || this.isNeutralOption(option)) {
       return undefined;
     }
@@ -1713,7 +1716,10 @@ export class ReportsService {
   private calendarStatusFilter(
     filters: Record<string, unknown>,
   ): CalendarEntryStatus | undefined {
-    const option = this.normalized(this.filterValue(filters, "Status"));
+    const option = this.normalized(
+      this.filterValue(filters, "Status da agenda") ??
+        this.filterValue(filters, "Status"),
+    );
     if (!option || this.isNeutralOption(option)) {
       return undefined;
     }
