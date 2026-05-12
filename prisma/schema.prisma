@@ -274,7 +274,7 @@ model ClientOnboardingCnpjRegistry {
   updatedAt              DateTime                                @updatedAt
   verificationChallenges ClientOnboardingVerificationChallenge[]
 
-  @@index([status])
+  @@index([status], map: "cjr_status_idx")
   @@map("cliente_onboarding_cnpj_registry")
 }
 
@@ -295,7 +295,7 @@ model ClientOnboardingVerificationChallenge {
   cnpjRegistry       ClientOnboardingCnpjRegistry        @relation(fields: [cnpjRegistryId], references: [id], onDelete: Cascade)
   onboardingRequests ClientOnboardingRequest[]
 
-  @@index([cnpjRegistryId, status, expiresAt])
+  @@index([cnpjRegistryId, status, expiresAt], map: "cov_registry_status_exp_idx")
   @@map("cliente_onboarding_verificacao")
 }
 

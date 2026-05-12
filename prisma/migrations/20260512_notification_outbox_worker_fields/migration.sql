@@ -1,6 +1,5 @@
--- AlterTable
-ALTER TABLE `notification_outbox`
-    MODIFY `status` ENUM('PENDING', 'PROCESSING', 'SENT', 'FAILED', 'CANCELED') NOT NULL DEFAULT 'PENDING',
-    ADD COLUMN `attempts` INTEGER NOT NULL DEFAULT 0 AFTER `status`,
-    ADD COLUMN `lastAttemptAt` DATETIME(3) NULL AFTER `queuedAt`,
-    ADD COLUMN `nextAttemptAt` DATETIME(3) NULL AFTER `lastAttemptAt`;
+-- No-op.
+-- These fields are created with notification_outbox in
+-- 20260512_onboarding_security_hardening. Keeping this migration empty
+-- preserves the original migration order without trying to alter a table
+-- before it exists.

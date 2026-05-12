@@ -87,6 +87,11 @@ interface CalendarGeoScope {
   cityName: string | null;
 }
 
+interface CalendarListRange {
+  from: Date;
+  to: Date;
+}
+
 @Injectable()
 export class CalendarService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -194,8 +199,11 @@ export class CalendarService {
       and.push({ category: query.category });
     }
 
+    const recurrenceRule = this.recurrenceRuleValue(query.recurrenceRule);
     if (query.recurrenceRule) {
-      and.push({ recurrenceRule: query.recurrenceRule });
+      and.push(
+        recurrenceRule ? { recurrenceRule } : { recurrenceRule: null }
+      );
     }
 
     if (query.holidayRegionCode) {
@@ -216,9 +224,26 @@ export class CalendarService {
       });
     }
 
+    const occurrenceRange = this.calendarListRange(query);
     const startsAt = this.dateFilter(query.startsAtFrom, query.startsAtTo);
     if (startsAt) {
-      and.push({ startsAt });
+      if (query.recurrenceRule) {
+        and.push(
+          recurrenceRule
+            ? { startsAt: { lte: occurrenceRange!.to } }
+            : { startsAt, recurrenceRule: null }
+        );
+      } else {
+        and.push({
+          OR: [
+            { startsAt, recurrenceRule: null },
+            {
+              recurrenceRule: { not: null },
+              startsAt: { lte: occurrenceRange!.to }
+            }
+          ]
+        });
+      }
     }
 
     const createdAt = this.dateFilter(query.createdAtFrom, query.createdAtTo);
@@ -243,7 +268,7 @@ export class CalendarService {
     });
 
     return {
-      items: items.map((item) => this.mapEntry(item, actor)),
+      items: this.mapEntriesForRange(items, actor, occurrenceRange),
       meta: {
         total: items.length,
         security:
@@ -1257,6 +1282,29 @@ export class CalendarService {
     };
   }
 
+  private calendarListRange(
+    query: Pick<ListCalendarEntriesQueryDto, 'startsAtFrom' | 'startsAtTo'>
+  ): CalendarListRange | null {
+    if (!query.startsAtFrom && !query.startsAtTo) {
+      return null;
+    }
+
+    const from = query.startsAtFrom
+      ? this.parseDateOnlyBoundary(query.startsAtFrom, false)
+      : new Date(0);
+    const to = query.startsAtTo
+      ? this.parseDateOnlyBoundary(query.startsAtTo, true)
+      : this.addDays(from, 366);
+
+    if (to < from) {
+      throw new BadRequestException(
+        'Periodo de agenda invalido: data final anterior a inicial.'
+      );
+    }
+
+    return { from, to };
+  }
+
   private parseDateOnlyBoundary(value: string, endOfDay: boolean): Date {
     const parsed = this.parseDateTime(value, endOfDay ? '23:59' : '00:00');
     if (endOfDay) {
@@ -1490,6 +1538,251 @@ export class CalendarService {
     return actor.securityContext !== 'authenticated';
   }
 
+  private mapEntriesForRange(
+    items: CalendarEntryWithRelations[],
+    actor: AuthTokenPayload,
+    range: CalendarListRange | null
+  ) {
+    if (!range) {
+      return items.map((item) => this.mapEntry(item, actor));
+    }
+
+    const mappedItems = items.flatMap((item) => {
+      const occurrences = this.recurrenceOccurrences(item, range);
+      return occurrences.map((occurrenceStartsAt) => {
+        const mapped = this.mapEntry(item, actor);
+        return {
+          ...mapped,
+          occurrenceStartsAt,
+          occurrenceStartsAtLabel: this.formatDateTime(occurrenceStartsAt),
+          seriesStartsAt: item.startsAt,
+          seriesStartsAtLabel: this.formatDateTime(item.startsAt),
+          isRecurringOccurrence:
+            Boolean(item.recurrenceRule) &&
+            occurrenceStartsAt.getTime() !== item.startsAt.getTime()
+        };
+      });
+    });
+
+    return mappedItems
+      .sort(
+        (left, right) =>
+          left.occurrenceStartsAt.getTime() -
+          right.occurrenceStartsAt.getTime()
+      )
+      .slice(0, 100);
+  }
+
+  private recurrenceOccurrences(
+    item: CalendarEntryWithRelations,
+    range: CalendarListRange
+  ): Date[] {
+    const rule = this.recurrenceRuleValue(item.recurrenceRule);
+    if (!rule) {
+      return this.isWithinRange(item.startsAt, range) ? [item.startsAt] : [];
+    }
+
+    switch (rule) {
+      case 'DAILY':
+        return this.dailyOccurrences(item.startsAt, range, false);
+      case 'WEEKDAYS':
+        return this.dailyOccurrences(item.startsAt, range, true);
+      case 'WEEKLY':
+        return this.weeklyOccurrences(item.startsAt, range);
+      case 'MONTHLY':
+        return this.monthlyOccurrences(item.startsAt, range, false);
+      case 'MONTHLY_NTH_WEEKDAY':
+        return this.monthlyOccurrences(item.startsAt, range, true);
+      case 'YEARLY':
+        return this.yearlyOccurrences(item.startsAt, range);
+      default:
+        return this.isWithinRange(item.startsAt, range) ? [item.startsAt] : [];
+    }
+  }
+
+  private dailyOccurrences(
+    seriesStart: Date,
+    range: CalendarListRange,
+    weekdaysOnly: boolean
+  ): Date[] {
+    const occurrences: Date[] = [];
+    let cursor = this.dateOnly(
+      seriesStart > range.from ? seriesStart : range.from
+    );
+
+    while (cursor <= range.to && occurrences.length < 100) {
+      const occurrence = this.withSeriesTime(cursor, seriesStart);
+      const day = occurrence.getDay();
+      if (
+        occurrence >= seriesStart &&
+        this.isWithinRange(occurrence, range) &&
+        (!weekdaysOnly || (day >= 1 && day <= 5))
+      ) {
+        occurrences.push(occurrence);
+      }
+      cursor = this.addDays(cursor, 1);
+    }
+
+    return occurrences;
+  }
+
+  private weeklyOccurrences(
+    seriesStart: Date,
+    range: CalendarListRange
+  ): Date[] {
+    const occurrences: Date[] = [];
+    const targetWeekday = seriesStart.getDay();
+    let cursor = this.dateOnly(
+      seriesStart > range.from ? seriesStart : range.from
+    );
+
+    while (cursor.getDay() !== targetWeekday) {
+      cursor = this.addDays(cursor, 1);
+    }
+
+    while (cursor <= range.to && occurrences.length < 100) {
+      const occurrence = this.withSeriesTime(cursor, seriesStart);
+      if (occurrence >= seriesStart && this.isWithinRange(occurrence, range)) {
+        occurrences.push(occurrence);
+      }
+      cursor = this.addDays(cursor, 7);
+    }
+
+    return occurrences;
+  }
+
+  private monthlyOccurrences(
+    seriesStart: Date,
+    range: CalendarListRange,
+    nthWeekday: boolean
+  ): Date[] {
+    const occurrences: Date[] = [];
+    let year = range.from.getFullYear();
+    let month = range.from.getMonth();
+    const endYear = range.to.getFullYear();
+    const endMonth = range.to.getMonth();
+
+    while (
+      (year < endYear || (year === endYear && month <= endMonth)) &&
+      occurrences.length < 100
+    ) {
+      const candidate = nthWeekday
+        ? this.nthWeekdayOfMonth(
+            year,
+            month,
+            Math.ceil(seriesStart.getDate() / 7),
+            seriesStart.getDay(),
+            seriesStart
+          )
+        : this.dayOfMonth(
+            year,
+            month,
+            seriesStart.getDate(),
+            seriesStart
+          );
+
+      if (
+        candidate &&
+        candidate >= seriesStart &&
+        this.isWithinRange(candidate, range)
+      ) {
+        occurrences.push(candidate);
+      }
+
+      month += 1;
+      if (month > 11) {
+        month = 0;
+        year += 1;
+      }
+    }
+
+    return occurrences;
+  }
+
+  private yearlyOccurrences(
+    seriesStart: Date,
+    range: CalendarListRange
+  ): Date[] {
+    const occurrences: Date[] = [];
+    for (
+      let year = range.from.getFullYear();
+      year <= range.to.getFullYear() && occurrences.length < 100;
+      year += 1
+    ) {
+      const candidate = this.dayOfMonth(
+        year,
+        seriesStart.getMonth(),
+        seriesStart.getDate(),
+        seriesStart
+      );
+      if (
+        candidate &&
+        candidate >= seriesStart &&
+        this.isWithinRange(candidate, range)
+      ) {
+        occurrences.push(candidate);
+      }
+    }
+    return occurrences;
+  }
+
+  private dayOfMonth(
+    year: number,
+    month: number,
+    day: number,
+    seriesStart: Date
+  ): Date | null {
+    if (day > this.daysInMonth(year, month)) {
+      return null;
+    }
+    return new Date(
+      year,
+      month,
+      day,
+      seriesStart.getHours(),
+      seriesStart.getMinutes(),
+      seriesStart.getSeconds(),
+      seriesStart.getMilliseconds()
+    );
+  }
+
+  private nthWeekdayOfMonth(
+    year: number,
+    month: number,
+    nth: number,
+    weekday: number,
+    seriesStart: Date
+  ): Date | null {
+    const first = new Date(year, month, 1);
+    const offset = (weekday - first.getDay() + 7) % 7;
+    const day = 1 + offset + (nth - 1) * 7;
+    return this.dayOfMonth(year, month, day, seriesStart);
+  }
+
+  private daysInMonth(year: number, month: number): number {
+    return new Date(year, month + 1, 0).getDate();
+  }
+
+  private withSeriesTime(date: Date, seriesStart: Date): Date {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      seriesStart.getHours(),
+      seriesStart.getMinutes(),
+      seriesStart.getSeconds(),
+      seriesStart.getMilliseconds()
+    );
+  }
+
+  private dateOnly(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  private isWithinRange(date: Date, range: CalendarListRange): boolean {
+    return date >= range.from && date <= range.to;
+  }
+
   private mapEntry(item: CalendarEntryWithRelations, actor: AuthTokenPayload) {
     const channels = this.channelsFromJson(item.notificationChannelsJson);
     const person =
@@ -1520,6 +1813,7 @@ export class CalendarService {
       targetType: item.targetType,
       category: item.category,
       recurrenceRule: item.recurrenceRule,
+      recurrenceRuleLabel: this.recurrenceRuleLabel(item.recurrenceRule),
       audience: this.audienceFromJson(item.audienceJson),
       title: item.title,
       description: item.description ?? '',
@@ -1688,6 +1982,25 @@ export class CalendarService {
       return item.clientCompany.name;
     }
     return 'Agenda geral';
+  }
+
+  private recurrenceRuleLabel(rule?: string | null): string {
+    switch (this.recurrenceRuleValue(rule)) {
+      case 'DAILY':
+        return 'Todos os dias';
+      case 'WEEKDAYS':
+        return 'Dias uteis';
+      case 'WEEKLY':
+        return 'Semanal';
+      case 'MONTHLY':
+        return 'Mensal';
+      case 'MONTHLY_NTH_WEEKDAY':
+        return 'Mensal por dia da semana';
+      case 'YEARLY':
+        return 'Anual';
+      default:
+        return 'Nao se repete';
+    }
   }
 
   private kindLabel(kind: CalendarEntryKind): string {

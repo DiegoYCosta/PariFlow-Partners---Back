@@ -14,6 +14,7 @@ CREATE TABLE `agenda_dia_nao_util` (
     `name` VARCHAR(160) NOT NULL,
     `scope` VARCHAR(40) NOT NULL DEFAULT 'CUSTOM',
     `regionCode` VARCHAR(40) NULL,
+    `stateCode` VARCHAR(2) NULL,
     `cityName` VARCHAR(120) NULL,
     `isRecurringYearly` BOOLEAN NOT NULL DEFAULT false,
     `active` BOOLEAN NOT NULL DEFAULT true,
@@ -25,6 +26,7 @@ CREATE TABLE `agenda_dia_nao_util` (
     UNIQUE INDEX `agenda_dia_nao_util_publicId_key`(`publicId`),
     INDEX `agenda_dia_nao_util_tenantRootCompanyId_date_active_idx`(`tenantRootCompanyId`, `date`, `active`),
     INDEX `agenda_dia_nao_util_tenantRootCompanyId_regionCode_active_idx`(`tenantRootCompanyId`, `regionCode`, `active`),
+    INDEX `agenda_dia_nao_util_tenantRootCompanyId_stateCode_active_idx`(`tenantRootCompanyId`, `stateCode`, `active`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

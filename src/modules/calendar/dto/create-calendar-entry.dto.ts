@@ -73,16 +73,31 @@ export class CreateCalendarEntryDto {
   category?: string;
 
   @ApiPropertyOptional({
-    example: 'YEARLY',
+    example: 'WEEKLY',
     description:
-      'Regra simples de repeticao. Use YEARLY para itens anuais ainda vigentes.'
+      'Regra simples de repeticao. NONE, DAILY, WEEKDAYS, WEEKLY, MONTHLY, MONTHLY_NTH_WEEKDAY ou YEARLY.'
   })
   @IsOptional()
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value
   )
-  @IsIn(['NONE', 'YEARLY'])
-  recurrenceRule?: 'NONE' | 'YEARLY';
+  @IsIn([
+    'NONE',
+    'DAILY',
+    'WEEKDAYS',
+    'WEEKLY',
+    'MONTHLY',
+    'MONTHLY_NTH_WEEKDAY',
+    'YEARLY'
+  ])
+  recurrenceRule?:
+    | 'NONE'
+    | 'DAILY'
+    | 'WEEKDAYS'
+    | 'WEEKLY'
+    | 'MONTHLY'
+    | 'MONTHLY_NTH_WEEKDAY'
+    | 'YEARLY';
 
   @ApiProperty({
     example: '2026-05-01',
