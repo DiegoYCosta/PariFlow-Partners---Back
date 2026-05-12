@@ -3,6 +3,7 @@ import { PrismaModule } from './infra/database/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { ClientOnboardingModule } from './modules/client-onboarding/client-onboarding.module';
 import { ClientCompaniesModule } from './modules/client-companies/client-companies.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -20,6 +21,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     PrismaModule,
     HealthModule,
     AuthModule,
+    ClientOnboardingModule,
     CalendarModule,
     DashboardModule,
     ProviderCompaniesModule,

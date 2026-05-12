@@ -19,6 +19,7 @@ import { FirebaseAdminService } from '../../infra/firebase/firebase-admin.servic
 import { SessionExchangeDto } from './dto/session-exchange.dto';
 import {
   AuthCapabilities,
+  AuthTenantContext,
   AuthTokenPayload
 } from './interfaces/auth-token-payload.interface';
 
@@ -30,6 +31,7 @@ type SessionIdentity = {
 
 type SessionUser = SessionIdentity & {
   publicId: string;
+  tenantRootCompany?: AuthTenantContext | null;
 };
 
 type SessionSnapshot = {
@@ -162,7 +164,8 @@ export class AuthService {
       user: {
         publicId: payload.sub,
         firebaseUid: payload.firebaseUid,
-        email: payload.email
+        email: payload.email,
+        tenantRootCompany: payload.tenantRootCompany ?? null
       },
       securityContext: payload.securityContext,
       profiles: payload.profiles,
@@ -265,6 +268,7 @@ export class AuthService {
           publicId: identity.firebaseUid === 'firebase-dev-local'
             ? 'usr_dev_local'
             : createUserPublicId(),
+          tenantRootCompany: null,
           ...identity
         },
         profiles: localProfiles,
@@ -294,7 +298,8 @@ export class AuthService {
           publicId: persistedUser.publicId,
           firebaseUid: persistedUser.firebaseUid ?? identity.firebaseUid,
           nome: persistedUser.name,
-          email: persistedUser.email
+          email: persistedUser.email,
+          tenantRootCompany: null
         },
         userSystemId: persistedUser.id,
         profiles: localProfiles,
@@ -363,16 +368,32 @@ export class AuthService {
     name: string;
     email: string | null;
   }): Promise<SessionSnapshot> {
+    const userWithTenant = await this.prisma.userSystem.findUnique({
+      where: { id: persistedUser.id },
+      include: {
+        tenantRootCompany: true
+      }
+    });
     const profiles = await this.loadUserProfiles(persistedUser.id);
     const capabilities = this.buildCapabilities(profiles);
     const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
+    const tenantRootCompany = userWithTenant?.tenantRootCompany
+      ? {
+          publicId: userWithTenant.tenantRootCompany.publicId,
+          tradeName: userWithTenant.tenantRootCompany.tradeName,
+          legalName: userWithTenant.tenantRootCompany.legalName,
+          cnpj: userWithTenant.tenantRootCompany.cnpj,
+          status: userWithTenant.tenantRootCompany.status
+        }
+      : null;
 
     return {
       user: {
         publicId: persistedUser.publicId,
         firebaseUid: persistedUser.firebaseUid ?? '',
         nome: persistedUser.name,
-        email: persistedUser.email
+        email: persistedUser.email,
+        tenantRootCompany
       },
       userSystemId: persistedUser.id,
       profiles: profiles.map((profile) =>
@@ -389,6 +410,7 @@ export class AuthService {
       sub: sessionSnapshot.user.publicId,
       firebaseUid: sessionSnapshot.user.firebaseUid,
       email: sessionSnapshot.user.email,
+      tenantRootCompany: sessionSnapshot.user.tenantRootCompany ?? null,
       profiles: sessionSnapshot.profiles,
       audienceGroups: sessionSnapshot.audienceGroups,
       securityContext: sessionSnapshot.securityContext,

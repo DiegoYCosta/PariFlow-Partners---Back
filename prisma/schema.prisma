@@ -152,10 +152,126 @@ enum CalendarEntryTargetType {
   POSITION
 }
 
+enum ClientOnboardingCnpjStatus {
+  AVAILABLE
+  AVAILABLE_FOR_TEST
+  IN_USE
+  UNAVAILABLE
+}
+
+enum ClientOnboardingContractType {
+  ACTIVE_CLIENT
+  DEMO_ACCESS
+  UNAVAILABLE
+}
+
+enum ClientOnboardingRequestStatus {
+  PENDING_REVIEW
+  PENDING_VERIFICATION
+  RELEASED
+  REJECTED
+  UNAVAILABLE
+}
+
+enum ClientOnboardingVerificationChannel {
+  EMAIL
+  PHONE
+  NONE
+}
+
+enum TenantRootCompanyStatus {
+  PENDING_REVIEW
+  PENDING_VERIFICATION
+  ACTIVE
+  DEMO
+  UNAVAILABLE
+}
+
+model TenantRootCompany {
+  id                    BigInt                       @id @default(autoincrement())
+  publicId              String                       @unique @db.VarChar(26)
+  tradeName             String                       @db.VarChar(180)
+  legalName             String                       @db.VarChar(180)
+  cnpj                  String                       @unique @db.VarChar(14)
+  stateRegistration     String?                      @db.VarChar(40)
+  municipalRegistration String?                      @db.VarChar(40)
+  companyType           String                       @db.VarChar(80)
+  segment               String                       @db.VarChar(180)
+  primaryCnae           String?                      @db.VarChar(16)
+  companySize           String                       @db.VarChar(50)
+  contractType          ClientOnboardingContractType
+  status                TenantRootCompanyStatus      @default(PENDING_VERIFICATION)
+  isRootCompany         Boolean                      @default(true)
+  deletionLocked        Boolean                      @default(true)
+  primaryContactName    String                       @db.VarChar(160)
+  primaryContactEmail   String?                      @db.VarChar(180)
+  primaryContactPhone   String?                      @db.VarChar(30)
+  accountQuotasJson     Json?
+  verifiedAt            DateTime?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  onboardingRequests    ClientOnboardingRequest[]    @relation("TenantRootCompanyOnboardingRequests")
+  userSystems           UserSystem[]                 @relation("UserSystemTenantRootCompany")
+  providerCompanies     ProviderCompany[]            @relation("ProviderCompanyTenantRootCompany")
+  clientCompanies       ClientCompany[]              @relation("ClientCompanyTenantRootCompany")
+  contracts             Contract[]                   @relation("ContractTenantRootCompany")
+  people                Person[]                     @relation("PersonTenantRootCompany")
+  positions             Position[]                   @relation("PositionTenantRootCompany")
+  employmentLinks       EmploymentLink[]             @relation("EmploymentLinkTenantRootCompany")
+  occurrences           Occurrence[]                 @relation("OccurrenceTenantRootCompany")
+  attachments           Attachment[]                 @relation("AttachmentTenantRootCompany")
+  entityTags            EntityTag[]                  @relation("EntityTagTenantRootCompany")
+  calendarEntries       CalendarEntry[]              @relation("CalendarEntryTenantRootCompany")
+  securityEvents        SecurityEvent[]              @relation("SecurityEventTenantRootCompany")
+  auditLogs             AuditLog[]                   @relation("AuditLogTenantRootCompany")
+
+  @@index([status, createdAt])
+  @@map("empresa_raiz_cliente")
+}
+
+model ClientOnboardingRequest {
+  id                          BigInt                              @id @default(autoincrement())
+  publicId                    String                              @unique @db.VarChar(26)
+  tenantRootCompanyId         BigInt?
+  cnpj                        String                              @db.VarChar(14)
+  tradeName                   String                              @db.VarChar(180)
+  legalName                   String                              @db.VarChar(180)
+  stateRegistration           String?                             @db.VarChar(40)
+  municipalRegistration       String?                             @db.VarChar(40)
+  companyType                 String                              @db.VarChar(80)
+  segment                     String                              @db.VarChar(180)
+  primaryCnae                 String?                             @db.VarChar(16)
+  companySize                 String                              @db.VarChar(50)
+  cnpjStatus                  ClientOnboardingCnpjStatus
+  contractType                ClientOnboardingContractType
+  status                      ClientOnboardingRequestStatus       @default(PENDING_VERIFICATION)
+  primaryContactName          String                              @db.VarChar(160)
+  primaryContactEmail         String?                             @db.VarChar(180)
+  primaryContactPhone         String?                             @db.VarChar(30)
+  accountQuotasJson           Json?
+  verificationAccepted        Boolean                             @default(false)
+  verificationChannel         ClientOnboardingVerificationChannel @default(NONE)
+  verificationTarget          String?                             @db.VarChar(180)
+  verificationMatchedRegistry Boolean                             @default(false)
+  reviewNotificationEmail     String?                             @db.VarChar(180)
+  submittedAt                 DateTime                            @default(now())
+  releasedAt                  DateTime?
+  reviewedAt                  DateTime?
+  createdAt                   DateTime                            @default(now())
+  updatedAt                   DateTime                            @updatedAt
+  tenantRootCompany           TenantRootCompany?                  @relation("TenantRootCompanyOnboardingRequests", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([cnpj, submittedAt])
+  @@index([status, submittedAt])
+  @@index([tenantRootCompanyId])
+  @@map("cliente_onboarding_solicitacao")
+}
+
 model UserSystem {
   id                      BigInt                   @id @default(autoincrement())
   publicId                String                   @unique @db.VarChar(26)
   firebaseUid             String?                  @unique @db.VarChar(128)
+  tenantRootCompanyId     BigInt?
   providerCompanyId       BigInt?
   clientCompanyId         BigInt?
   name                    String                   @db.VarChar(160)
@@ -177,11 +293,13 @@ model UserSystem {
   createdAttachments      Attachment[]             @relation("AttachmentCreatedBy")
   entityTagAudience       EntityTagAudienceUser[]
   attachmentAudience      AttachmentAudienceUser[]
+  tenantRootCompany       TenantRootCompany?       @relation("UserSystemTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
   providerCompany         ProviderCompany?         @relation("UserSystemProviderCompany", fields: [providerCompanyId], references: [id], onDelete: SetNull)
   clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
   createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
   assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
 
+  @@index([tenantRootCompanyId])
   @@index([providerCompanyId])
   @@index([clientCompanyId])
   @@map("usuario_sistema")
@@ -216,66 +334,75 @@ model UserAccessProfile {
 }
 
 model ProviderCompany {
-  id              BigInt           @id @default(autoincrement())
-  publicId        String           @unique @db.VarChar(26)
-  legalName       String           @db.VarChar(180)
-  tradeName       String?          @db.VarChar(180)
-  document        String           @unique @db.VarChar(20)
-  status          String           @db.VarChar(30)
-  contactsJson    Json?
-  notes           String?          @db.Text
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  contracts       Contract[]
-  links           EmploymentLink[]
-  occurrences     Occurrence[]
-  entityTags      EntityTag[]
-  userSystems     UserSystem[]     @relation("UserSystemProviderCompany")
-  calendarEntries CalendarEntry[]
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  legalName           String             @db.VarChar(180)
+  tradeName           String?            @db.VarChar(180)
+  document            String             @unique @db.VarChar(20)
+  status              String             @db.VarChar(30)
+  contactsJson        Json?
+  notes               String?            @db.Text
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  contracts           Contract[]
+  links               EmploymentLink[]
+  occurrences         Occurrence[]
+  entityTags          EntityTag[]
+  userSystems         UserSystem[]       @relation("UserSystemProviderCompany")
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany? @relation("ProviderCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("empresa_prestadora")
 }
 
 model ClientCompany {
-  id              BigInt          @id @default(autoincrement())
-  publicId        String          @unique @db.VarChar(26)
-  name            String          @db.VarChar(180)
-  document        String?         @db.VarChar(20)
-  clientType      String          @db.VarChar(60)
-  addressJson     Json?
-  contactName     String?         @db.VarChar(160)
-  status          String          @db.VarChar(30)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  contracts       Contract[]
-  userSystems     UserSystem[]    @relation("UserSystemClientCompany")
-  calendarEntries CalendarEntry[]
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  name                String             @db.VarChar(180)
+  document            String?            @db.VarChar(20)
+  clientType          String             @db.VarChar(60)
+  addressJson         Json?
+  contactName         String?            @db.VarChar(160)
+  status              String             @db.VarChar(30)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  contracts           Contract[]
+  userSystems         UserSystem[]       @relation("UserSystemClientCompany")
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany? @relation("ClientCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("cliente_contratante")
 }
 
 model Contract {
-  id                BigInt             @id @default(autoincrement())
-  publicId          String             @unique @db.VarChar(26)
-  providerCompanyId BigInt
-  clientCompanyId   BigInt
-  contractTypeId    BigInt?
-  contractModelId   BigInt?
-  startsAt          DateTime
-  endsAt            DateTime?
-  status            String             @db.VarChar(30)
-  notes             String?            @db.Text
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  providerCompany   ProviderCompany    @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
-  clientCompany     ClientCompany      @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
-  contractType      ContractType?      @relation(fields: [contractTypeId], references: [id], onDelete: SetNull)
-  contractModel     ContractModel?     @relation(fields: [contractModelId], references: [id], onDelete: SetNull)
-  documents         ContractDocument[]
-  positions         Position[]
-  links             EmploymentLink[]
-  calendarEntries   CalendarEntry[]
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  providerCompanyId   BigInt
+  clientCompanyId     BigInt
+  contractTypeId      BigInt?
+  contractModelId     BigInt?
+  startsAt            DateTime
+  endsAt              DateTime?
+  status              String             @db.VarChar(30)
+  notes               String?            @db.Text
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  providerCompany     ProviderCompany    @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  clientCompany       ClientCompany      @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  contractType        ContractType?      @relation(fields: [contractTypeId], references: [id], onDelete: SetNull)
+  contractModel       ContractModel?     @relation(fields: [contractModelId], references: [id], onDelete: SetNull)
+  documents           ContractDocument[]
+  positions           Position[]
+  links               EmploymentLink[]
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany? @relation("ContractTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("contrato")
 }
 
@@ -344,42 +471,48 @@ model ServiceCatalog {
 }
 
 model Position {
-  id              BigInt           @id @default(autoincrement())
-  publicId        String           @unique @db.VarChar(26)
-  contractId      BigInt
-  serviceId       BigInt
-  name            String           @db.VarChar(160)
-  location        String?          @db.VarChar(180)
-  shift           String?          @db.VarChar(120)
-  schedule        String?          @db.VarChar(120)
-  requirements    String?          @db.Text
-  status          String           @db.VarChar(30)
-  contract        Contract         @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  service         ServiceCatalog   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  links           EmploymentLink[]
-  occurrences     Occurrence[]
-  calendarEntries CalendarEntry[]
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  contractId          BigInt
+  serviceId           BigInt
+  name                String             @db.VarChar(160)
+  location            String?            @db.VarChar(180)
+  shift               String?            @db.VarChar(120)
+  schedule            String?            @db.VarChar(120)
+  requirements        String?            @db.Text
+  status              String             @db.VarChar(30)
+  contract            Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  service             ServiceCatalog     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  links               EmploymentLink[]
+  occurrences         Occurrence[]
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany? @relation("PositionTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("posto_ou_vaga")
 }
 
 model Person {
-  id              BigInt           @id @default(autoincrement())
-  publicId        String           @unique @db.VarChar(26)
-  name            String           @db.VarChar(160)
-  cpf             String?          @unique @db.VarChar(14)
-  rg              String?          @db.VarChar(30)
-  email           String?          @db.VarChar(180)
-  phone           String?          @db.VarChar(30)
-  birthDate       DateTime?
-  addressJson     Json?
-  notes           String?          @db.Text
-  externalWorks   ExternalWork[]
-  links           EmploymentLink[]
-  occurrences     Occurrence[]
-  entityTags      EntityTag[]
-  calendarEntries CalendarEntry[]
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  name                String             @db.VarChar(160)
+  cpf                 String?            @unique @db.VarChar(14)
+  rg                  String?            @db.VarChar(30)
+  email               String?            @db.VarChar(180)
+  phone               String?            @db.VarChar(30)
+  birthDate           DateTime?
+  addressJson         Json?
+  notes               String?            @db.Text
+  externalWorks       ExternalWork[]
+  links               EmploymentLink[]
+  occurrences         Occurrence[]
+  entityTags          EntityTag[]
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany? @relation("PersonTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("pessoa")
 }
 
@@ -400,25 +533,28 @@ model ExternalWork {
 }
 
 model EmploymentLink {
-  id                BigInt               @id @default(autoincrement())
-  publicId          String               @unique @db.VarChar(26)
-  personId          BigInt
-  providerCompanyId BigInt
-  contractId        BigInt
-  positionId        BigInt
-  type              String               @db.VarChar(60)
-  status            EmploymentLinkStatus @default(PENDING)
-  startsAt          DateTime
-  endsAt            DateTime?
-  person            Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
-  providerCompany   ProviderCompany      @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
-  contract          Contract             @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  position          Position             @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  moves             EmploymentMove[]
-  dismissal         Dismissal?
-  occurrences       Occurrence[]
-  calendarEntries   CalendarEntry[]
+  id                  BigInt               @id @default(autoincrement())
+  publicId            String               @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  personId            BigInt
+  providerCompanyId   BigInt
+  contractId          BigInt
+  positionId          BigInt
+  type                String               @db.VarChar(60)
+  status              EmploymentLinkStatus @default(PENDING)
+  startsAt            DateTime
+  endsAt              DateTime?
+  person              Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
+  providerCompany     ProviderCompany      @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  contract            Contract             @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  position            Position             @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  moves               EmploymentMove[]
+  dismissal           Dismissal?
+  occurrences         Occurrence[]
+  calendarEntries     CalendarEntry[]
+  tenantRootCompany   TenantRootCompany?   @relation("EmploymentLinkTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("vinculo")
 }
 
@@ -454,6 +590,7 @@ model Dismissal {
 model Occurrence {
   id                   BigInt               @id @default(autoincrement())
   publicId             String               @unique @db.VarChar(26)
+  tenantRootCompanyId  BigInt?
   personId             BigInt
   providerCompanyId    BigInt?
   employmentLinkId     BigInt?
@@ -476,13 +613,16 @@ model Occurrence {
   position             Position?            @relation(fields: [positionId], references: [id], onDelete: SetNull)
   attachments          Attachment[]
   receipts             DocumentReceipt[]
+  tenantRootCompany    TenantRootCompany?   @relation("OccurrenceTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("ocorrencia")
 }
 
 model Attachment {
   id                    BigInt                    @id @default(autoincrement())
   publicId              String                    @unique @db.VarChar(26)
+  tenantRootCompanyId   BigInt?
   occurrenceId          BigInt
   ownerUserSystemId     BigInt?
   createdByUserSystemId BigInt?
@@ -507,13 +647,16 @@ model Attachment {
   createdByUserSystem   UserSystem?               @relation("AttachmentCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
   audienceGroups        AttachmentAudienceGroup[]
   audienceUsers         AttachmentAudienceUser[]
+  tenantRootCompany     TenantRootCompany?        @relation("AttachmentTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("anexo")
 }
 
 model EntityTag {
   id                    BigInt                   @id @default(autoincrement())
   publicId              String                   @unique @db.VarChar(26)
+  tenantRootCompanyId   BigInt?
   targetType            EntityTagTargetType
   personId              BigInt?
   providerCompanyId     BigInt?
@@ -537,7 +680,9 @@ model EntityTag {
   removedByUserSystem   UserSystem?              @relation("EntityTagRemovedBy", fields: [removedByUserSystemId], references: [id], onDelete: SetNull)
   audienceGroups        EntityTagAudienceGroup[]
   audienceUsers         EntityTagAudienceUser[]
+  tenantRootCompany     TenantRootCompany?       @relation("EntityTagTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@index([targetType, status, sortOrder])
   @@index([personId, status])
   @@index([providerCompanyId, status])
@@ -606,6 +751,7 @@ model DocumentReceipt {
 model CalendarEntry {
   id                             BigInt                     @id @default(autoincrement())
   publicId                       String                     @unique @db.VarChar(26)
+  tenantRootCompanyId            BigInt?
   kind                           CalendarEntryKind
   status                         CalendarEntryStatus        @default(SCHEDULED)
   priority                       CalendarEntryPriority      @default(NORMAL)
@@ -643,7 +789,9 @@ model CalendarEntry {
   position                       Position?                  @relation(fields: [positionId], references: [id], onDelete: SetNull)
   createdByUserSystem            UserSystem?                @relation("CalendarEntryCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
   assignedToUserSystem           UserSystem?                @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
+  tenantRootCompany              TenantRootCompany?         @relation("CalendarEntryTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId, startsAt])
   @@index([startsAt, status])
   @@index([kind, startsAt])
   @@index([personId, startsAt])
@@ -691,31 +839,37 @@ model SensitiveSession {
 }
 
 model SecurityEvent {
-  id           BigInt            @id @default(autoincrement())
-  publicId     String            @unique @db.VarChar(26)
-  userSystemId BigInt?
-  eventType    SecurityEventType
-  description  String            @db.VarChar(255)
-  ipAddress    String?           @db.VarChar(64)
-  userAgent    String?           @db.VarChar(255)
-  createdAt    DateTime          @default(now())
-  userSystem   UserSystem?       @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  userSystemId        BigInt?
+  eventType           SecurityEventType
+  description         String             @db.VarChar(255)
+  ipAddress           String?            @db.VarChar(64)
+  userAgent           String?            @db.VarChar(255)
+  createdAt           DateTime           @default(now())
+  userSystem          UserSystem?        @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+  tenantRootCompany   TenantRootCompany? @relation("SecurityEventTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId, createdAt])
   @@map("security_events")
 }
 
 model AuditLog {
-  id             BigInt      @id @default(autoincrement())
-  publicId       String      @unique @db.VarChar(26)
-  userSystemId   BigInt?
-  entityName     String      @db.VarChar(80)
-  entityPublicId String?     @db.VarChar(26)
-  action         String      @db.VarChar(60)
-  description    String?     @db.Text
-  ipAddress      String?     @db.VarChar(64)
-  device         String?     @db.VarChar(255)
-  createdAt      DateTime    @default(now())
-  userSystem     UserSystem? @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  userSystemId        BigInt?
+  entityName          String             @db.VarChar(80)
+  entityPublicId      String?            @db.VarChar(26)
+  action              String             @db.VarChar(60)
+  description         String?            @db.Text
+  ipAddress           String?            @db.VarChar(64)
+  device              String?            @db.VarChar(255)
+  createdAt           DateTime           @default(now())
+  userSystem          UserSystem?        @relation(fields: [userSystemId], references: [id], onDelete: SetNull)
+  tenantRootCompany   TenantRootCompany? @relation("AuditLogTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId, createdAt])
   @@map("log_auditoria")
 }
