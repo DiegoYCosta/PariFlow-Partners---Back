@@ -135,6 +135,13 @@ enum CalendarBusinessDayPolicy {
   MOVE_TO_NEXT_BUSINESS_DAY
 }
 
+enum CalendarNotificationPolicy {
+  ON_DUE_DATE
+  ONE_BUSINESS_DAY_BEFORE
+  SAME_DAY_OR_PREVIOUS_BUSINESS_DAY
+  CUSTOM_BUSINESS_DAYS_BEFORE
+}
+
 enum CalendarEntryTargetType {
   GENERAL
   PERSON
@@ -597,40 +604,45 @@ model DocumentReceipt {
 }
 
 model CalendarEntry {
-  id                     BigInt                    @id @default(autoincrement())
-  publicId               String                    @unique @db.VarChar(26)
-  kind                   CalendarEntryKind
-  status                 CalendarEntryStatus       @default(SCHEDULED)
-  priority               CalendarEntryPriority     @default(NORMAL)
-  targetType             CalendarEntryTargetType   @default(GENERAL)
-  title                  String                    @db.VarChar(180)
-  description            String?                   @db.Text
-  startsAt               DateTime
-  endsAt                 DateTime?
-  timezone               String                    @default("America/Sao_Paulo") @db.VarChar(64)
-  isAllDay               Boolean                   @default(false)
-  businessDayPolicy      CalendarBusinessDayPolicy @default(ALLOW_NON_BUSINESS_DAY)
-  holidayRegionCode      String?                   @db.VarChar(40)
-  personId               BigInt?
-  providerCompanyId      BigInt?
-  clientCompanyId        BigInt?
-  contractId             BigInt?
-  employmentLinkId       BigInt?
-  positionId             BigInt?
-  createdByUserSystemId  BigInt?
-  assignedToUserSystemId BigInt?
-  completedAt            DateTime?
-  canceledAt             DateTime?
-  createdAt              DateTime                  @default(now())
-  updatedAt              DateTime                  @updatedAt
-  person                 Person?                   @relation(fields: [personId], references: [id], onDelete: SetNull)
-  providerCompany        ProviderCompany?          @relation(fields: [providerCompanyId], references: [id], onDelete: SetNull)
-  clientCompany          ClientCompany?            @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
-  contract               Contract?                 @relation(fields: [contractId], references: [id], onDelete: SetNull)
-  employmentLink         EmploymentLink?           @relation(fields: [employmentLinkId], references: [id], onDelete: SetNull)
-  position               Position?                 @relation(fields: [positionId], references: [id], onDelete: SetNull)
-  createdByUserSystem    UserSystem?               @relation("CalendarEntryCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
-  assignedToUserSystem   UserSystem?               @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
+  id                             BigInt                     @id @default(autoincrement())
+  publicId                       String                     @unique @db.VarChar(26)
+  kind                           CalendarEntryKind
+  status                         CalendarEntryStatus        @default(SCHEDULED)
+  priority                       CalendarEntryPriority      @default(NORMAL)
+  targetType                     CalendarEntryTargetType    @default(GENERAL)
+  title                          String                     @db.VarChar(180)
+  description                    String?                    @db.Text
+  startsAt                       DateTime
+  endsAt                         DateTime?
+  timezone                       String                     @default("America/Sao_Paulo") @db.VarChar(64)
+  isAllDay                       Boolean                    @default(false)
+  businessDayPolicy              CalendarBusinessDayPolicy  @default(ALLOW_NON_BUSINESS_DAY)
+  holidayRegionCode              String?                    @db.VarChar(40)
+  notificationPolicy             CalendarNotificationPolicy @default(ON_DUE_DATE)
+  notificationOffsetBusinessDays Int                        @default(0)
+  notificationTime               String                     @default("09:00") @db.VarChar(5)
+  notificationScheduledAt        DateTime?
+  notificationChannelsJson       Json?
+  personId                       BigInt?
+  providerCompanyId              BigInt?
+  clientCompanyId                BigInt?
+  contractId                     BigInt?
+  employmentLinkId               BigInt?
+  positionId                     BigInt?
+  createdByUserSystemId          BigInt?
+  assignedToUserSystemId         BigInt?
+  completedAt                    DateTime?
+  canceledAt                     DateTime?
+  createdAt                      DateTime                   @default(now())
+  updatedAt                      DateTime                   @updatedAt
+  person                         Person?                    @relation(fields: [personId], references: [id], onDelete: SetNull)
+  providerCompany                ProviderCompany?           @relation(fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  clientCompany                  ClientCompany?             @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  contract                       Contract?                  @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  employmentLink                 EmploymentLink?            @relation(fields: [employmentLinkId], references: [id], onDelete: SetNull)
+  position                       Position?                  @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  createdByUserSystem            UserSystem?                @relation("CalendarEntryCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+  assignedToUserSystem           UserSystem?                @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
 
   @@index([startsAt, status])
   @@index([kind, startsAt])
@@ -642,6 +654,7 @@ model CalendarEntry {
   @@index([positionId, startsAt])
   @@index([createdByUserSystemId, startsAt])
   @@index([assignedToUserSystemId, startsAt])
+  @@index([notificationScheduledAt])
   @@map("agenda_item")
 }
 
