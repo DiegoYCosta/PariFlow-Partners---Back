@@ -4,7 +4,15 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  CalendarBusinessDayPolicy,
+  CalendarEntryKind,
+  CalendarEntryPriority,
+  CalendarEntryStatus,
+  CalendarEntryTargetType,
+  CalendarNotificationPolicy,
+  Prisma
+} from '@prisma/client';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
@@ -62,6 +70,14 @@ type PersonWithRelations = Prisma.PersonGetPayload<{
     };
   };
 }>;
+
+type PersonBirthdaySource = Pick<
+  PersonWithRelations,
+  'id' | 'publicId' | 'tenantRootCompanyId' | 'name' | 'birthDate'
+>;
+
+const birthdayCalendarCategory = 'PERSON_BIRTHDAY';
+const birthdayCalendarNotificationTime = '09:00';
 
 @Injectable()
 export class PeopleService {
@@ -138,9 +154,14 @@ export class PeopleService {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.prisma.person.create({
-        data: this.buildPersonCreateData(dto, actor),
-        include: personDetailInclude
+      const item = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.person.create({
+          data: this.buildPersonCreateData(dto, actor),
+          include: personDetailInclude
+        });
+
+        await this.syncBirthdayCalendarEntry(tx, created, actor);
+        return created;
       });
 
       return this.mapPersonDetail(item);
@@ -157,28 +178,36 @@ export class PeopleService {
     const current = await this.ensurePersonExists(publicId, actor);
 
     try {
-      const item = await this.prisma.person.update({
-        where: { id: current.id },
-        data: {
-          ...this.buildPersonUpdateData(dto),
-          externalWorks:
-            dto.externalWorks === undefined
-              ? undefined
-              : {
-                  deleteMany: {},
-                  create: dto.externalWorks.map((work) => ({
-                    publicId: createPublicId('tex'),
-                    companyName: work.companyName,
-                    roleName: this.nullableText(work.roleName),
-                    schedule: this.nullableText(work.schedule),
-                    startsAt: work.startsAt ? new Date(work.startsAt) : null,
-                    endsAt: work.endsAt ? new Date(work.endsAt) : null,
-                    status: this.nullableText(work.status),
-                    notes: this.nullableText(work.notes)
-                  }))
-                }
-        },
-        include: personDetailInclude
+      const item = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.person.update({
+          where: { id: current.id },
+          data: {
+            ...this.buildPersonUpdateData(dto),
+            externalWorks:
+              dto.externalWorks === undefined
+                ? undefined
+                : {
+                    deleteMany: {},
+                    create: dto.externalWorks.map((work) => ({
+                      publicId: createPublicId('tex'),
+                      companyName: work.companyName,
+                      roleName: this.nullableText(work.roleName),
+                      schedule: this.nullableText(work.schedule),
+                      startsAt: work.startsAt ? new Date(work.startsAt) : null,
+                      endsAt: work.endsAt ? new Date(work.endsAt) : null,
+                      status: this.nullableText(work.status),
+                      notes: this.nullableText(work.notes)
+                    }))
+                  }
+          },
+          include: personDetailInclude
+        });
+
+        if (dto.name !== undefined || dto.birthDate !== undefined) {
+          await this.syncBirthdayCalendarEntry(tx, updated, actor);
+        }
+
+        return updated;
       });
 
       return this.mapPersonDetail(item);
@@ -302,6 +331,205 @@ export class PeopleService {
     }
 
     return person;
+  }
+
+  private async syncBirthdayCalendarEntry(
+    tx: Prisma.TransactionClient,
+    person: PersonBirthdaySource,
+    actor: AuthTokenPayload
+  ) {
+    const existingItems = await tx.calendarEntry.findMany({
+      where: {
+        personId: person.id,
+        category: birthdayCalendarCategory,
+        status: { not: CalendarEntryStatus.CANCELED }
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' }
+    });
+
+    if (!person.birthDate) {
+      if (existingItems.length > 0) {
+        await tx.calendarEntry.updateMany({
+          where: { id: { in: existingItems.map((item) => item.id) } },
+          data: {
+            status: CalendarEntryStatus.CANCELED,
+            canceledAt: new Date()
+          }
+        });
+      }
+      return;
+    }
+
+    const actorUser = await tx.userSystem.findUnique({
+      where: { publicId: actor.sub },
+      select: { id: true }
+    });
+
+    if (!actorUser) {
+      return;
+    }
+
+    const startsAt = this.nextBirthdayStart(person.birthDate);
+    const notificationScheduledAt = this.withTime(
+      startsAt,
+      birthdayCalendarNotificationTime
+    );
+    const title = `Aniversario de ${person.name}`;
+    const data = {
+      publicId: createPublicId('agi'),
+      tenantRootCompany: person.tenantRootCompanyId
+        ? { connect: { id: person.tenantRootCompanyId } }
+        : undefined,
+      kind: CalendarEntryKind.REMINDER,
+      status: CalendarEntryStatus.SCHEDULED,
+      priority: CalendarEntryPriority.NORMAL,
+      targetType: CalendarEntryTargetType.PERSON,
+      category: birthdayCalendarCategory,
+      recurrenceRule: 'YEARLY',
+      title,
+      description:
+        'Lembrete anual gerado automaticamente pelo cadastro da pessoa.',
+      startsAt,
+      endsAt: null,
+      timezone: 'America/Sao_Paulo',
+      isAllDay: false,
+      businessDayPolicy: CalendarBusinessDayPolicy.ALLOW_NON_BUSINESS_DAY,
+      notificationPolicy: CalendarNotificationPolicy.ON_DUE_DATE,
+      notificationOffsetBusinessDays: 0,
+      notificationTime: birthdayCalendarNotificationTime,
+      notificationScheduledAt,
+      notificationChannelsJson: ['IN_APP'] as Prisma.InputJsonValue,
+      person: { connect: { id: person.id } },
+      createdByUserSystem: { connect: { id: actorUser.id } },
+      assignedToUserSystem: { connect: { id: actorUser.id } }
+    } satisfies Prisma.CalendarEntryCreateInput;
+
+    const [primaryItem, ...duplicateItems] = existingItems;
+    if (duplicateItems.length > 0) {
+      await tx.calendarEntry.updateMany({
+        where: { id: { in: duplicateItems.map((item) => item.id) } },
+        data: {
+          status: CalendarEntryStatus.CANCELED,
+          canceledAt: new Date()
+        }
+      });
+    }
+
+    if (primaryItem) {
+      await tx.calendarEntry.update({
+        where: { id: primaryItem.id },
+        data: {
+          tenantRootCompany: person.tenantRootCompanyId
+            ? { connect: { id: person.tenantRootCompanyId } }
+            : undefined,
+          kind: data.kind,
+          status: data.status,
+          priority: data.priority,
+          targetType: data.targetType,
+          category: data.category,
+          recurrenceRule: data.recurrenceRule,
+          title: data.title,
+          description: data.description,
+          startsAt: data.startsAt,
+          endsAt: data.endsAt,
+          timezone: data.timezone,
+          isAllDay: data.isAllDay,
+          businessDayPolicy: data.businessDayPolicy,
+          notificationPolicy: data.notificationPolicy,
+          notificationOffsetBusinessDays: data.notificationOffsetBusinessDays,
+          notificationTime: data.notificationTime,
+          notificationScheduledAt: data.notificationScheduledAt,
+          notificationChannelsJson: data.notificationChannelsJson,
+          person: { connect: { id: person.id } },
+          assignedToUserSystem: { connect: { id: actorUser.id } },
+          canceledAt: null,
+          completedAt: null
+        }
+      });
+      return;
+    }
+
+    await tx.calendarEntry.create({ data });
+  }
+
+  private nextBirthdayStart(birthDate: Date, referenceDate = new Date()): Date {
+    const today = this.saoPauloDateParts(referenceDate);
+    const birthMonth = birthDate.getUTCMonth();
+    const birthDay = birthDate.getUTCDate();
+    let year = today.year;
+    let candidate = this.birthdayStartForYear(year, birthMonth, birthDay);
+
+    while (!candidate || this.compareDateOnly(candidate, today) < 0) {
+      year += 1;
+      candidate = this.birthdayStartForYear(year, birthMonth, birthDay);
+    }
+
+    return candidate;
+  }
+
+  private birthdayStartForYear(
+    year: number,
+    month: number,
+    day: number
+  ): Date | null {
+    if (day > this.daysInMonth(year, month)) {
+      return null;
+    }
+
+    const [hour, minute] = birthdayCalendarNotificationTime
+      .split(':')
+      .map((part) => Number(part));
+    return new Date(Date.UTC(year, month, day, hour, minute, 0, 0));
+  }
+
+  private daysInMonth(year: number, month: number): number {
+    return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  }
+
+  private compareDateOnly(
+    date: Date,
+    today: { year: number; month: number; day: number }
+  ): number {
+    const left =
+      date.getUTCFullYear() * 10000 +
+      (date.getUTCMonth() + 1) * 100 +
+      date.getUTCDate();
+    const right = today.year * 10000 + (today.month + 1) * 100 + today.day;
+    return left - right;
+  }
+
+  private saoPauloDateParts(date: Date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(date);
+
+    const value = (type: string) =>
+      Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+    return {
+      year: value('year'),
+      month: value('month') - 1,
+      day: value('day')
+    };
+  }
+
+  private withTime(date: Date, time: string): Date {
+    const [hour, minute] = time.split(':').map((part) => Number(part));
+    return new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        hour,
+        minute,
+        0,
+        0
+      )
+    );
   }
 
   private nullableText(value?: string): string | null {

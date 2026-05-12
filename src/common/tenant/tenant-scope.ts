@@ -15,6 +15,7 @@ type TenantScopedWhere =
   | Prisma.EntityTagWhereInput
   | Prisma.CalendarEntryWhereInput
   | Prisma.CalendarNonBusinessDayWhereInput
+  | Prisma.TimelineRecordWhereInput
   | Prisma.SecurityEventWhereInput
   | Prisma.AuditLogWhereInput
   | Prisma.UserSystemWhereInput;
