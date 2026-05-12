@@ -23,6 +23,9 @@ publico e `/api/docs` retorna `404`.
 - `PUBLIC_SUBMISSIONS_ENABLED=false`
 - `dev-token` nao deve ser aceito em IP publico; use Firebase Admin e usuario
   real tambem na homologacao por IP.
+- Rotas publicas de onboarding de cliente podem ficar abertas para cadastro,
+  mas sem expor contatos comerciais completos e com rate limit/WAF antes de
+  producao.
 - Security Group com SSH restrito ao seu IP.
 - Nunca abrir `3000`, `3001`, `3306` ou `33060` publicamente.
 - `SEED_ENABLE_SAMPLE_DATA=false`
@@ -46,6 +49,9 @@ Use somente depois de dominio, HTTPS e Firebase Admin configurados.
 - Bucket S3 privado preenchido quando anexos reais forem ativados.
 - Swagger desabilitado no NestJS. Se precisar reabrir futuramente, publicar
   somente atras de protecao explicita.
+- Onboarding publico deve continuar limitado a CNPJs liberados em lista
+  comercial, com revisao manual quando a verificacao em duas etapas for
+  recusada.
 - `npm ci --omit=optional` no deploy para nao instalar Firestore/Storage
   opcionais do Firebase Admin enquanto o backend usa somente Firebase Auth.
 
