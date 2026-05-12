@@ -91,6 +91,29 @@ export class AttachmentsController {
     return this.attachmentsService.findOne(publicId, request.user!);
   }
 
+  @Get(':publicId/access')
+  @ApiBearerAuth()
+  @UseGuards(InternalAuthGuard)
+  @ApiOperation({
+    summary:
+      'Gera acesso auditavel para visualizar ou baixar anexo protegido.'
+  })
+  access(
+    @Param('publicId') publicId: string,
+    @Query('disposition') disposition: 'view' | 'download' | undefined,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.attachmentsService.createAccess(
+      publicId,
+      disposition === 'download' ? 'download' : 'view',
+      request.user!,
+      {
+        ipAddress: request.ip,
+        userAgent: normalizeHeader(request.headers['user-agent'])
+      }
+    );
+  }
+
   @Patch(':publicId')
   @ApiBearerAuth()
   @UseGuards(InternalAuthGuard)

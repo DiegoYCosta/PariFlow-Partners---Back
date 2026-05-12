@@ -16,7 +16,13 @@ import {
 } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
+import {
+  actorTenantPublicId,
+  tenantCreateRelation,
+  tenantWhere
+} from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateContractDocumentDto } from './dto/create-contract-document.dto';
 import { CreateContractModelDto } from './dto/create-contract-model.dto';
 import { CreateContractPositionDto } from './dto/create-contract-position.dto';
@@ -71,14 +77,14 @@ type ContractModelWithType = Prisma.ContractModelGetPayload<{
 export class ContractsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: PaginationQueryDto) {
+  async list(query: PaginationQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
     await this.ensureDefaultContractType();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
     const search = query.search?.trim();
 
-    const where: Prisma.ContractWhereInput | undefined = search
+    const searchWhere: Prisma.ContractWhereInput | undefined = search
       ? {
           OR: [
             { publicId: { contains: search } },
@@ -92,6 +98,7 @@ export class ContractsService {
           ]
         }
       : undefined;
+    const where = tenantWhere(actor, searchWhere);
 
     try {
       const [total, items] = await Promise.all([
@@ -114,13 +121,13 @@ export class ContractsService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
     await this.ensureDefaultContractType();
 
     try {
-      const item = await this.prisma.contract.findUnique({
-        where: { publicId },
+      const item = await this.prisma.contract.findFirst({
+        where: tenantWhere(actor, { publicId }),
         include: contractInclude
       });
 
@@ -136,18 +143,18 @@ export class ContractsService {
     }
   }
 
-  async create(dto: CreateContractDto) {
+  async create(dto: CreateContractDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
     this.ensureDateRange(dto.startsAt, dto.endsAt);
 
     try {
       const [providerCompany, clientCompany, resolvedCatalog] =
         await Promise.all([
-          this.prisma.providerCompany.findUnique({
-            where: { publicId: dto.providerCompanyPublicId }
+          this.prisma.providerCompany.findFirst({
+            where: tenantWhere(actor, { publicId: dto.providerCompanyPublicId })
           }),
-          this.prisma.clientCompany.findUnique({
-            where: { publicId: dto.clientCompanyPublicId }
+          this.prisma.clientCompany.findFirst({
+            where: tenantWhere(actor, { publicId: dto.clientCompanyPublicId })
           }),
           this.resolveContractCatalog(
             dto.contractTypePublicId,
@@ -170,10 +177,13 @@ export class ContractsService {
       const item = await this.prisma.contract.create({
         data: {
           publicId: createPublicId('ctr'),
-          providerCompanyId: providerCompany.id,
-          clientCompanyId: clientCompany.id,
-          contractTypeId: resolvedCatalog.contractType.id,
-          contractModelId: resolvedCatalog.contractModel?.id,
+          tenantRootCompany: tenantCreateRelation(actor),
+          providerCompany: { connect: { id: providerCompany.id } },
+          clientCompany: { connect: { id: clientCompany.id } },
+          contractType: { connect: { id: resolvedCatalog.contractType.id } },
+          contractModel: resolvedCatalog.contractModel
+            ? { connect: { id: resolvedCatalog.contractModel.id } }
+            : undefined,
           startsAt: new Date(dto.startsAt),
           endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
           status: dto.status,
@@ -191,12 +201,13 @@ export class ContractsService {
     }
   }
 
-  async update(publicId: string, dto: UpdateContractDto) {
+  async update(publicId: string, dto: UpdateContractDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const current = await this.prisma.contract.findUnique({
-      where: { publicId },
+    const current = await this.prisma.contract.findFirst({
+      where: tenantWhere(actor, { publicId }),
       select: {
+        id: true,
         startsAt: true,
         endsAt: true
       }
@@ -223,13 +234,17 @@ export class ContractsService {
       const [providerCompany, clientCompany, resolvedCatalog] =
         await Promise.all([
           dto.providerCompanyPublicId
-            ? this.prisma.providerCompany.findUnique({
-                where: { publicId: dto.providerCompanyPublicId }
+            ? this.prisma.providerCompany.findFirst({
+                where: tenantWhere(actor, {
+                  publicId: dto.providerCompanyPublicId
+                })
               })
             : null,
           dto.clientCompanyPublicId
-            ? this.prisma.clientCompany.findUnique({
-                where: { publicId: dto.clientCompanyPublicId }
+            ? this.prisma.clientCompany.findFirst({
+                where: tenantWhere(actor, {
+                  publicId: dto.clientCompanyPublicId
+                })
               })
             : null,
           shouldUpdateCatalog
@@ -253,7 +268,7 @@ export class ContractsService {
       }
 
       const item = await this.prisma.contract.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           providerCompanyId: providerCompany?.id,
           clientCompanyId: clientCompany?.id,
@@ -279,12 +294,13 @@ export class ContractsService {
     }
   }
 
-  async remove(publicId: string) {
+  async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedContract(publicId, actor);
       const item = await this.prisma.contract.update({
-        where: { publicId },
+        where: { id: current.id },
         data: { status: 'INACTIVE' },
         include: contractInclude
       });
@@ -579,12 +595,12 @@ export class ContractsService {
     }
   }
 
-  async listPositions(contractPublicId: string) {
+  async listPositions(contractPublicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
-    const contractId = await this.resolveContractId(contractPublicId);
+    const contractId = await this.resolveContractId(contractPublicId, actor);
 
     const items = await this.prisma.position.findMany({
-      where: { contractId },
+      where: tenantWhere(actor, { contractId }),
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
       include: { service: true }
     });
@@ -594,11 +610,12 @@ export class ContractsService {
 
   async createPosition(
     contractPublicId: string,
-    dto: CreateContractPositionDto
+    dto: CreateContractPositionDto,
+    actor: AuthTokenPayload
   ) {
     this.prisma.assertConfigured();
     const [contractId, service] = await Promise.all([
-      this.resolveContractId(contractPublicId),
+      this.resolveContractId(contractPublicId, actor),
       this.resolveActiveService(dto.servicePublicId)
     ]);
 
@@ -606,8 +623,9 @@ export class ContractsService {
       const item = await this.prisma.position.create({
         data: {
           publicId: createPublicId('pos'),
-          contractId,
-          serviceId: service.id,
+          tenantRootCompany: tenantCreateRelation(actor),
+          contract: { connect: { id: contractId } },
+          service: { connect: { id: service.id } },
           name: dto.name.trim(),
           location: dto.location?.trim() || null,
           shift: dto.shift?.trim() || null,
@@ -628,7 +646,8 @@ export class ContractsService {
 
   async updatePosition(
     positionPublicId: string,
-    dto: UpdateContractPositionDto
+    dto: UpdateContractPositionDto,
+    actor: AuthTokenPayload
   ) {
     this.prisma.assertConfigured();
     const serviceId = dto.servicePublicId
@@ -636,8 +655,9 @@ export class ContractsService {
       : undefined;
 
     try {
+      const current = await this.resolveScopedPosition(positionPublicId, actor);
       const item = await this.prisma.position.update({
-        where: { publicId: positionPublicId },
+        where: { id: current.id },
         data: {
           serviceId,
           name: dto.name?.trim(),
@@ -663,12 +683,13 @@ export class ContractsService {
     }
   }
 
-  async removePosition(positionPublicId: string) {
+  async removePosition(positionPublicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedPosition(positionPublicId, actor);
       const item = await this.prisma.position.update({
-        where: { publicId: positionPublicId },
+        where: { id: current.id },
         data: { status: 'INACTIVE' },
         include: { service: true }
       });
@@ -681,9 +702,9 @@ export class ContractsService {
     }
   }
 
-  async listDocuments(contractPublicId: string) {
+  async listDocuments(contractPublicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
-    const contractId = await this.resolveContractId(contractPublicId);
+    const contractId = await this.resolveContractId(contractPublicId, actor);
 
     const items = await this.prisma.contractDocument.findMany({
       where: {
@@ -698,11 +719,12 @@ export class ContractsService {
 
   async createDocument(
     contractPublicId: string,
-    dto: CreateContractDocumentDto
+    dto: CreateContractDocumentDto,
+    actor: AuthTokenPayload
   ) {
     this.prisma.assertConfigured();
     this.ensureDocumentHasReference(dto);
-    const contractId = await this.resolveContractId(contractPublicId);
+    const contractId = await this.resolveContractId(contractPublicId, actor);
 
     try {
       const item = await this.prisma.contractDocument.create({
@@ -730,13 +752,15 @@ export class ContractsService {
 
   async updateDocument(
     documentPublicId: string,
-    dto: UpdateContractDocumentDto
+    dto: UpdateContractDocumentDto,
+    actor: AuthTokenPayload
   ) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedDocument(documentPublicId, actor);
       const item = await this.prisma.contractDocument.update({
-        where: { publicId: documentPublicId },
+        where: { id: current.id },
         data: {
           title: dto.title?.trim(),
           classification: dto.classification,
@@ -764,12 +788,13 @@ export class ContractsService {
     }
   }
 
-  async removeDocument(documentPublicId: string) {
+  async removeDocument(documentPublicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedDocument(documentPublicId, actor);
       const item = await this.prisma.contractDocument.update({
-        where: { publicId: documentPublicId },
+        where: { id: current.id },
         data: {
           status: ContractDocumentStatus.DELETED,
           deletedAt: new Date()
@@ -891,9 +916,12 @@ export class ContractsService {
     return item;
   }
 
-  private async resolveContractId(publicId: string): Promise<bigint> {
-    const contract = await this.prisma.contract.findUnique({
-      where: { publicId },
+  private async resolveContractId(
+    publicId: string,
+    actor: AuthTokenPayload
+  ): Promise<bigint> {
+    const contract = await this.prisma.contract.findFirst({
+      where: tenantWhere(actor, { publicId }),
       select: { id: true }
     });
 
@@ -902,6 +930,66 @@ export class ContractsService {
     }
 
     return contract.id;
+  }
+
+  private async resolveScopedContract(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    const contract = await this.prisma.contract.findFirst({
+      where: tenantWhere(actor, { publicId }),
+      select: { id: true }
+    });
+
+    if (!contract) {
+      throw new NotFoundException('Contrato nao encontrado.');
+    }
+
+    return contract;
+  }
+
+  private async resolveScopedPosition(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    const position = await this.prisma.position.findFirst({
+      where: tenantWhere(actor, { publicId }),
+      select: { id: true }
+    });
+
+    if (!position) {
+      throw new NotFoundException('Posto nao encontrado.');
+    }
+
+    return position;
+  }
+
+  private async resolveScopedDocument(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    const tenantPublicId = actorTenantPublicId(actor);
+    const document = await this.prisma.contractDocument.findFirst({
+      where: {
+        publicId,
+        ...(tenantPublicId
+          ? {
+              contract: {
+                tenantRootCompany: {
+                  publicId: tenantPublicId
+                }
+              }
+            }
+          : {})
+      },
+      select: { id: true }
+    });
+
+    if (!document) {
+      throw new NotFoundException('Documento do contrato nao encontrado.');
+    }
+
+    return document;
   }
 
   private async resolveActiveService(publicId: string) {

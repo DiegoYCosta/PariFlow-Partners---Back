@@ -9,7 +9,9 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
+import { tenantCreateRelation, tenantWhere } from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 
@@ -65,13 +67,13 @@ type PersonWithRelations = Prisma.PersonGetPayload<{
 export class PeopleService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: PaginationQueryDto) {
+  async list(query: PaginationQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
     const search = query.search?.trim();
 
-    const where: Prisma.PersonWhereInput | undefined = search
+    const searchWhere: Prisma.PersonWhereInput | undefined = search
       ? {
           OR: [
             { name: { contains: search } },
@@ -81,6 +83,7 @@ export class PeopleService {
           ]
         }
       : undefined;
+    const where = tenantWhere(actor, searchWhere);
 
     try {
       const [total, items] = await Promise.all([
@@ -110,12 +113,12 @@ export class PeopleService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.prisma.person.findUnique({
-        where: { publicId },
+      const item = await this.prisma.person.findFirst({
+        where: tenantWhere(actor, { publicId }),
         include: personDetailInclude
       });
 
@@ -131,12 +134,12 @@ export class PeopleService {
     }
   }
 
-  async create(dto: CreatePersonDto) {
+  async create(dto: CreatePersonDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
       const item = await this.prisma.person.create({
-        data: this.buildPersonCreateData(dto),
+        data: this.buildPersonCreateData(dto, actor),
         include: personDetailInclude
       });
 
@@ -148,14 +151,14 @@ export class PeopleService {
     }
   }
 
-  async update(publicId: string, dto: UpdatePersonDto) {
+  async update(publicId: string, dto: UpdatePersonDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    await this.ensurePersonExists(publicId);
+    const current = await this.ensurePersonExists(publicId, actor);
 
     try {
       const item = await this.prisma.person.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           ...this.buildPersonUpdateData(dto),
           externalWorks:
@@ -187,11 +190,11 @@ export class PeopleService {
     }
   }
 
-  async remove(publicId: string) {
+  async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const person = await this.prisma.person.findUnique({
-      where: { publicId },
+    const person = await this.prisma.person.findFirst({
+      where: tenantWhere(actor, { publicId }),
       include: {
         _count: {
           select: {
@@ -235,9 +238,13 @@ export class PeopleService {
     }
   }
 
-  private buildPersonCreateData(dto: CreatePersonDto): Prisma.PersonCreateInput {
+  private buildPersonCreateData(
+    dto: CreatePersonDto,
+    actor: AuthTokenPayload
+  ): Prisma.PersonCreateInput {
     return {
       publicId: createPublicId('pes'),
+      tenantRootCompany: tenantCreateRelation(actor),
       name: dto.name,
       cpf: this.nullableText(dto.cpf),
       rg: this.nullableText(dto.rg),
@@ -284,15 +291,17 @@ export class PeopleService {
     };
   }
 
-  private async ensurePersonExists(publicId: string) {
-    const person = await this.prisma.person.findUnique({
-      where: { publicId },
+  private async ensurePersonExists(publicId: string, actor: AuthTokenPayload) {
+    const person = await this.prisma.person.findFirst({
+      where: tenantWhere(actor, { publicId }),
       select: { id: true }
     });
 
     if (!person) {
       throw new NotFoundException('Pessoa nao encontrada.');
     }
+
+    return person;
   }
 
   private nullableText(value?: string): string | null {

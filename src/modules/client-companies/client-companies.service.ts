@@ -4,7 +4,9 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
+import { tenantCreateRelation, tenantWhere } from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateClientCompanyDto } from './dto/create-client-company.dto';
 import { UpdateClientCompanyDto } from './dto/update-client-company.dto';
 
@@ -12,13 +14,13 @@ import { UpdateClientCompanyDto } from './dto/update-client-company.dto';
 export class ClientCompaniesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: PaginationQueryDto) {
+  async list(query: PaginationQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
     const search = query.search?.trim();
 
-    const where: Prisma.ClientCompanyWhereInput | undefined = search
+    const searchWhere: Prisma.ClientCompanyWhereInput | undefined = search
       ? {
           OR: [
             { name: { contains: search } },
@@ -28,6 +30,7 @@ export class ClientCompaniesService {
           ]
         }
       : undefined;
+    const where = tenantWhere(actor, searchWhere);
 
     try {
       const [total, items] = await Promise.all([
@@ -49,12 +52,12 @@ export class ClientCompaniesService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.prisma.clientCompany.findUnique({
-        where: { publicId }
+      const item = await this.prisma.clientCompany.findFirst({
+        where: tenantWhere(actor, { publicId })
       });
 
       if (!item) {
@@ -69,13 +72,14 @@ export class ClientCompaniesService {
     }
   }
 
-  async create(dto: CreateClientCompanyDto) {
+  async create(dto: CreateClientCompanyDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
       const item = await this.prisma.clientCompany.create({
         data: {
           publicId: createPublicId('cli'),
+          tenantRootCompany: tenantCreateRelation(actor),
           name: dto.name,
           document: dto.document ?? null,
           clientType: dto.clientType,
@@ -93,12 +97,13 @@ export class ClientCompaniesService {
     }
   }
 
-  async update(publicId: string, dto: UpdateClientCompanyDto) {
+  async update(publicId: string, dto: UpdateClientCompanyDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedClient(publicId, actor);
       const item = await this.prisma.clientCompany.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           name: dto.name?.trim(),
           document:
@@ -125,12 +130,13 @@ export class ClientCompaniesService {
     }
   }
 
-  async remove(publicId: string) {
+  async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedClient(publicId, actor);
       const item = await this.prisma.clientCompany.update({
-        where: { publicId },
+        where: { id: current.id },
         data: { status: 'INACTIVE' }
       });
 
@@ -140,6 +146,22 @@ export class ClientCompaniesService {
         notFound: 'Cliente contratante nao encontrado.'
       });
     }
+  }
+
+  private async resolveScopedClient(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    const item = await this.prisma.clientCompany.findFirst({
+      where: tenantWhere(actor, { publicId }),
+      select: { id: true }
+    });
+
+    if (!item) {
+      throw new NotFoundException('Cliente contratante nao encontrado.');
+    }
+
+    return item;
   }
 
   private mapClientCompany(

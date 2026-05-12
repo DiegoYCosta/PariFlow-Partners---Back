@@ -5,6 +5,7 @@ import {
   Injectable
 } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
+import { assertTenantAccess } from '../../../common/tenant/tenant-scope';
 import { AuthTokenPayload } from '../interfaces/auth-token-payload.interface';
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -33,6 +34,7 @@ export class PrivilegedAccessGuard implements CanActivate {
       );
     }
 
+    assertTenantAccess(user);
     return true;
   }
 }

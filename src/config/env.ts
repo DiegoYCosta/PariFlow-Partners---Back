@@ -100,6 +100,26 @@ const environmentSchema = z.object({
   SENSITIVE_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(10),
   PUBLIC_SUBMISSIONS_ENABLED: booleanFromEnv.default(false),
   PUBLIC_SUBMISSION_TOKEN: optionalStringFromEnv,
+  NOTIFICATION_OUTBOX_WORKER_ENABLED: booleanFromEnv.default(true),
+  NOTIFICATION_OUTBOX_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30000),
+  NOTIFICATION_OUTBOX_BATCH_SIZE: z.coerce.number().int().positive().default(10),
+  NOTIFICATION_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  SMTP_HOST: optionalStringFromEnv,
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: booleanFromEnv.default(false),
+  SMTP_USER: optionalStringFromEnv,
+  SMTP_PASSWORD: optionalStringFromEnv,
+  SMTP_FROM: optionalStringFromEnv,
+  WHATSAPP_API_BASE_URL: z.string().url().default('https://graph.facebook.com'),
+  WHATSAPP_API_VERSION: z.string().min(1).default('v25.0'),
+  WHATSAPP_PHONE_NUMBER_ID: optionalStringFromEnv,
+  WHATSAPP_ACCESS_TOKEN: optionalStringFromEnv,
+  WHATSAPP_DEFAULT_TEMPLATE_NAME: optionalStringFromEnv,
+  WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE: z.string().min(1).default('pt_BR'),
   SEED_ADMIN_NAME: optionalStringFromEnv,
   SEED_ADMIN_EMAIL: optionalEmailFromEnv,
   SEED_ADMIN_FIREBASE_UID: optionalStringFromEnv,

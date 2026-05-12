@@ -7,6 +7,7 @@ import {
   EmploymentLinkStatus,
   Prisma,
 } from "@prisma/client";
+import { tenantWhere } from "../../common/tenant/tenant-scope";
 import { PrismaService } from "../../infra/database/prisma.service";
 import { AuthTokenPayload } from "../auth/interfaces/auth-token-payload.interface";
 import { ExecuteReportDto } from "./dto/execute-report.dto";
@@ -257,7 +258,7 @@ export class ReportsService {
       });
     }
 
-    const data = await this.buildReport(dto.templateId, dto.filters ?? {});
+    const data = await this.buildReport(dto.templateId, dto.filters ?? {}, actor);
     return this.decorateReport(dto, actor, definition, {
       status: "ready",
       ...data,
@@ -267,46 +268,47 @@ export class ReportsService {
   private async buildReport(
     templateId: string,
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     switch (templateId) {
       case "strategic_executive_map":
       case "strategic_trends":
       case "management_indicators":
-        return this.buildIndicatorsReport();
+        return this.buildIndicatorsReport(actor);
       case "strategic_network_risk":
-        return this.buildNetworkRiskReport(filters);
+        return this.buildNetworkRiskReport(filters, actor);
       case "management_employees":
-        return this.buildEmployeesReport(filters);
+        return this.buildEmployeesReport(filters, actor);
       case "management_hires":
-        return this.buildHiresReport(filters);
+        return this.buildHiresReport(filters, actor);
       case "management_dismissals":
-        return this.buildDismissalsReport(filters);
+        return this.buildDismissalsReport(filters, actor);
       case "management_movements":
       case "controls_movements":
-        return this.buildMovementsReport(filters);
+        return this.buildMovementsReport(filters, actor);
       case "management_departments":
-        return this.buildDistributionReport(filters);
+        return this.buildDistributionReport(filters, actor);
       case "management_contracts":
-        return this.buildContractsReport(filters);
+        return this.buildContractsReport(filters, actor);
       case "controls_documents":
-        return this.buildDocumentsReport(filters);
+        return this.buildDocumentsReport(filters, actor);
       case "controls_calendar":
-        return this.buildCalendarEntriesReport(filters);
+        return this.buildCalendarEntriesReport(filters, actor);
       case "controls_evidence":
-        return this.buildEvidenceReport(filters);
+        return this.buildEvidenceReport(filters, actor);
       case "compliance_alerts":
       case "compliance_exceptions":
-        return this.buildComplianceOccurrencesReport(filters);
+        return this.buildComplianceOccurrencesReport(filters, actor);
       case "compliance_sensitive_access":
       case "audit_sessions":
-        return this.buildSessionsReport(filters);
+        return this.buildSessionsReport(filters, actor);
       case "compliance_expirations":
-        return this.buildExpirationsReport(filters);
+        return this.buildExpirationsReport(filters, actor);
       case "audit_changes":
       case "audit_deletions":
       case "audit_additions":
       case "audit_settings":
-        return this.buildAuditLogReport(templateId, filters);
+        return this.buildAuditLogReport(templateId, filters, actor);
       default:
         return {
           metrics: [],
@@ -319,9 +321,11 @@ export class ReportsService {
 
   private async buildEmployeesReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const statusFilter = this.employmentStatusFilter(filters);
     const people = await this.prisma.person.findMany({
+      where: tenantWhere(actor, {} as Prisma.PersonWhereInput),
       take: reportRowLimit,
       orderBy: { name: "asc" },
       include: {
@@ -400,6 +404,7 @@ export class ReportsService {
 
   private async buildHiresReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const statusFilter = this.employmentStatusFilter(filters);
@@ -412,9 +417,8 @@ export class ReportsService {
     if (statusFilter) {
       where.status = statusFilter;
     }
-
     const links = await this.prisma.employmentLink.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ startsAt: "desc" }, { id: "desc" }],
       include: {
@@ -463,6 +467,7 @@ export class ReportsService {
 
   private async buildDismissalsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const dismissedAt = this.dateFilter(dateRange);
@@ -472,7 +477,7 @@ export class ReportsService {
     }
 
     const dismissals = await this.prisma.dismissal.findMany({
-      where,
+      where: this.scopedDismissalWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ dismissedAt: "desc" }, { id: "desc" }],
       include: {
@@ -531,6 +536,7 @@ export class ReportsService {
 
   private async buildMovementsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const movedAt = this.dateFilter(dateRange);
@@ -540,7 +546,7 @@ export class ReportsService {
     }
 
     const moves = await this.prisma.employmentMove.findMany({
-      where,
+      where: this.scopedEmploymentMoveWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ movedAt: "desc" }, { id: "desc" }],
       include: {
@@ -597,8 +603,10 @@ export class ReportsService {
 
   private async buildDistributionReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const positions = await this.prisma.position.findMany({
+      where: tenantWhere(actor, {} as Prisma.PositionWhereInput),
       take: reportRowLimit,
       orderBy: [{ status: "asc" }, { name: "asc" }],
       include: {
@@ -662,7 +670,9 @@ export class ReportsService {
     };
   }
 
-  private async buildIndicatorsReport(): Promise<ReportBuildResult> {
+  private async buildIndicatorsReport(
+    actor: AuthTokenPayload,
+  ): Promise<ReportBuildResult> {
     const now = new Date();
     const inSixtyDays = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
@@ -676,26 +686,36 @@ export class ReportsService {
       activeDocuments,
       contractsNearEnd,
     ] = await Promise.all([
-      this.prisma.person.count(),
+      this.prisma.person.count({
+        where: tenantWhere(actor, {} as Prisma.PersonWhereInput),
+      }),
       this.prisma.employmentLink.count({
-        where: { status: EmploymentLinkStatus.ACTIVE },
-      }),
-      this.prisma.contract.count(),
-      this.prisma.contract.count({ where: { status: "ACTIVE" } }),
-      this.prisma.occurrence.count({ where: { status: "ACTIVE" } }),
-      this.prisma.attachment.count({
-        where: { status: AttachmentStatus.ACTIVE },
-      }),
-      this.prisma.contractDocument.count({
-        where: { status: ContractDocumentStatus.ACTIVE },
+        where: tenantWhere(actor, { status: EmploymentLinkStatus.ACTIVE }),
       }),
       this.prisma.contract.count({
-        where: {
+        where: tenantWhere(actor, {} as Prisma.ContractWhereInput),
+      }),
+      this.prisma.contract.count({
+        where: tenantWhere(actor, { status: "ACTIVE" }),
+      }),
+      this.prisma.occurrence.count({
+        where: tenantWhere(actor, { status: "ACTIVE" }),
+      }),
+      this.prisma.attachment.count({
+        where: tenantWhere(actor, { status: AttachmentStatus.ACTIVE }),
+      }),
+      this.prisma.contractDocument.count({
+        where: this.scopedContractDocumentWhere(actor, {
+          status: ContractDocumentStatus.ACTIVE,
+        }),
+      }),
+      this.prisma.contract.count({
+        where: tenantWhere(actor, {
           endsAt: {
             gte: now,
             lte: inSixtyDays,
           },
-        },
+        }),
       }),
     ]);
 
@@ -749,8 +769,10 @@ export class ReportsService {
 
   private async buildNetworkRiskReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const contracts = await this.prisma.contract.findMany({
+      where: tenantWhere(actor, {} as Prisma.ContractWhereInput),
       take: reportRowLimit,
       orderBy: [{ status: "asc" }, { startsAt: "desc" }],
       include: {
@@ -832,6 +854,7 @@ export class ReportsService {
 
   private async buildContractsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, [
       "Vigencia",
@@ -844,7 +867,7 @@ export class ReportsService {
     }
 
     const contracts = await this.prisma.contract.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ startsAt: "desc" }, { id: "desc" }],
       include: {
@@ -912,9 +935,12 @@ export class ReportsService {
 
   private async buildDocumentsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const documents = await this.prisma.contractDocument.findMany({
-      where: { status: ContractDocumentStatus.ACTIVE },
+      where: this.scopedContractDocumentWhere(actor, {
+        status: ContractDocumentStatus.ACTIVE,
+      }),
       take: reportRowLimit,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
@@ -980,6 +1006,7 @@ export class ReportsService {
 
   private async buildCalendarEntriesReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const requestedDateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const dateRange = requestedDateRange ?? this.defaultFutureRange(30);
@@ -997,9 +1024,24 @@ export class ReportsService {
     if (statusFilter) {
       where.status = statusFilter;
     }
+    const regionFilter =
+      this.filterValue(filters, "Regiao calendario") ??
+      this.filterValue(filters, "Regiao");
+    const stateFilter =
+      this.filterValue(filters, "Estado") ?? this.filterValue(filters, "UF");
+    const cityFilter = this.filterValue(filters, "Cidade");
+    if (regionFilter) {
+      where.appliesToRegionCode = regionFilter.trim().toUpperCase();
+    }
+    if (stateFilter) {
+      where.appliesToStateCode = stateFilter.trim().toUpperCase();
+    }
+    if (cityFilter) {
+      where.appliesToCityName = { contains: cityFilter.trim() };
+    }
 
     const entries = await this.prisma.calendarEntry.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
       include: {
@@ -1096,6 +1138,11 @@ export class ReportsService {
           entry.startsAt,
           entry.holidayRegionCode,
         ),
+        aplicabilidade: this.calendarApplicabilityLabel(
+          entry.appliesToRegionCode,
+          entry.appliesToStateCode,
+          entry.appliesToCityName,
+        ),
       };
     });
 
@@ -1113,6 +1160,9 @@ export class ReportsService {
       "vinculo",
       "empresa",
       "contrato",
+    ]);
+    rows = this.applyTextFilter(rows, filters, "Aplicabilidade", [
+      "aplicabilidade",
     ]);
 
     return {
@@ -1144,6 +1194,7 @@ export class ReportsService {
         { key: "notificacao", label: "Notificacao" },
         { key: "canal", label: "Canal" },
         { key: "diaNaoUtil", label: "Dia nao util" },
+        { key: "aplicabilidade", label: "Aplicabilidade" },
       ],
       rows,
       notes: [
@@ -1157,10 +1208,11 @@ export class ReportsService {
 
   private async buildEvidenceReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const [attachments, documents] = await Promise.all([
       this.prisma.attachment.findMany({
-        where: { status: AttachmentStatus.ACTIVE },
+        where: tenantWhere(actor, { status: AttachmentStatus.ACTIVE }),
         take: Math.floor(reportRowLimit / 2),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         include: {
@@ -1173,7 +1225,9 @@ export class ReportsService {
         },
       }),
       this.prisma.contractDocument.findMany({
-        where: { status: ContractDocumentStatus.ACTIVE },
+        where: this.scopedContractDocumentWhere(actor, {
+          status: ContractDocumentStatus.ACTIVE,
+        }),
         take: Math.floor(reportRowLimit / 2),
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         include: {
@@ -1245,6 +1299,7 @@ export class ReportsService {
 
   private async buildComplianceOccurrencesReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const occurredAt = this.dateFilter(dateRange);
@@ -1254,7 +1309,7 @@ export class ReportsService {
     }
 
     const occurrences = await this.prisma.occurrence.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       include: {
@@ -1322,6 +1377,7 @@ export class ReportsService {
 
   private async buildExpirationsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange =
       this.dateRangeFromFilters(filters, ["Janela", "Vencimento"]) ??
@@ -1331,7 +1387,7 @@ export class ReportsService {
     };
 
     const contracts = await this.prisma.contract.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ endsAt: "asc" }, { id: "asc" }],
       include: {
@@ -1390,6 +1446,7 @@ export class ReportsService {
   private async buildAuditLogReport(
     templateId: string,
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const createdAt = this.dateFilter(dateRange);
@@ -1399,7 +1456,7 @@ export class ReportsService {
     }
 
     const logs = await this.prisma.auditLog.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
@@ -1450,6 +1507,7 @@ export class ReportsService {
 
   private async buildSessionsReport(
     filters: Record<string, unknown>,
+    actor: AuthTokenPayload,
   ): Promise<ReportBuildResult> {
     const dateRange = this.dateRangeFromFilters(filters, ["Periodo"]);
     const createdAt = this.dateFilter(dateRange);
@@ -1459,7 +1517,7 @@ export class ReportsService {
     }
 
     const events = await this.prisma.securityEvent.findMany({
-      where,
+      where: tenantWhere(actor, where),
       take: reportRowLimit,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
@@ -1505,6 +1563,56 @@ export class ReportsService {
         "Sessoes sensiveis e refresh tokens ja existem no schema; o relatorio inicial usa security_events como fonte auditavel.",
       ],
     };
+  }
+
+  private scopedDismissalWhere(
+    actor: AuthTokenPayload,
+    where: Prisma.DismissalWhereInput,
+  ): Prisma.DismissalWhereInput {
+    const employmentLinkScope = this.employmentLinkTenantScope(actor);
+    return employmentLinkScope
+      ? { AND: [where, { employmentLink: { is: employmentLinkScope } }] }
+      : where;
+  }
+
+  private scopedEmploymentMoveWhere(
+    actor: AuthTokenPayload,
+    where: Prisma.EmploymentMoveWhereInput,
+  ): Prisma.EmploymentMoveWhereInput {
+    const employmentLinkScope = this.employmentLinkTenantScope(actor);
+    return employmentLinkScope
+      ? { AND: [where, { employmentLink: { is: employmentLinkScope } }] }
+      : where;
+  }
+
+  private scopedContractDocumentWhere(
+    actor: AuthTokenPayload,
+    where: Prisma.ContractDocumentWhereInput,
+  ): Prisma.ContractDocumentWhereInput {
+    const contractScope = this.contractTenantScope(actor);
+    return contractScope
+      ? { AND: [where, { contract: { is: contractScope } }] }
+      : where;
+  }
+
+  private employmentLinkTenantScope(
+    actor: AuthTokenPayload,
+  ): Prisma.EmploymentLinkWhereInput | undefined {
+    return this.nonEmptyScope(
+      tenantWhere(actor, {} as Prisma.EmploymentLinkWhereInput),
+    );
+  }
+
+  private contractTenantScope(
+    actor: AuthTokenPayload,
+  ): Prisma.ContractWhereInput | undefined {
+    return this.nonEmptyScope(tenantWhere(actor, {} as Prisma.ContractWhereInput));
+  }
+
+  private nonEmptyScope<TWhere extends object>(
+    where: TWhere | undefined,
+  ): TWhere | undefined {
+    return where && Object.keys(where).length > 0 ? where : undefined;
   }
 
   private async decorateReport(
@@ -1849,6 +1957,17 @@ export class ReportsService {
       labels.push(`Feriado (${holidayRegionCode})`);
     }
     return labels.length > 0 ? labels.join(" / ") : "Dia util";
+  }
+
+  private calendarApplicabilityLabel(
+    regionCode?: string | null,
+    stateCode?: string | null,
+    cityName?: string | null,
+  ): string {
+    const labels = [cityName, stateCode, regionCode ? `regiao ${regionCode}` : null]
+      .map((value) => this.text(value).value)
+      .filter((value) => value.length > 0);
+    return labels.length > 0 ? labels.join(" / ") : "Geral";
   }
 
   private calendarChannelsLabel(value: Prisma.JsonValue): string {

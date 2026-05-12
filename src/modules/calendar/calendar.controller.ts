@@ -17,8 +17,11 @@ import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from '../auth/guards/privileged-access.guard';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CalendarService } from './calendar.service';
+import { CalendarApplicabilityQueryDto } from './dto/calendar-applicability-query.dto';
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto';
+import { CreateCalendarNonBusinessDayDto } from './dto/create-calendar-non-business-day.dto';
 import { ListCalendarEntriesQueryDto } from './dto/list-calendar-entries-query.dto';
+import { ListCalendarNonBusinessDaysQueryDto } from './dto/list-calendar-non-business-days-query.dto';
 import { UpdateCalendarEntryDto } from './dto/update-calendar-entry.dto';
 
 type AuthenticatedRequest = FastifyRequest & {
@@ -59,6 +62,42 @@ export class CalendarController {
     return this.calendarService.create(dto, request.user!);
   }
 
+  @Get('non-business-days')
+  @ApiOperation({
+    summary:
+      'Lista dias nao uteis compartilhados usados no calculo de dias uteis.'
+  })
+  listNonBusinessDays(
+    @Query() query: ListCalendarNonBusinessDaysQueryDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.calendarService.listNonBusinessDays(query, request.user!);
+  }
+
+  @Post('non-business-days')
+  @ApiOperation({
+    summary:
+      'Cria feriado, ponto facultativo ou dia nao util compartilhado.'
+  })
+  createNonBusinessDay(
+    @Body() dto: CreateCalendarNonBusinessDayDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.calendarService.createNonBusinessDay(dto, request.user!);
+  }
+
+  @Get('applicability')
+  @ApiOperation({
+    summary:
+      'Mostra pessoas e empresas relacionadas a uma cidade/estado do calendario.'
+  })
+  applicability(
+    @Query() query: CalendarApplicabilityQueryDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.calendarService.applicability(query, request.user!);
+  }
+
   @Patch(':publicId')
   @ApiOperation({
     summary:
@@ -70,6 +109,20 @@ export class CalendarController {
     @Req() request: AuthenticatedRequest
   ) {
     return this.calendarService.update(publicId, dto, request.user!);
+  }
+
+  @Delete('non-business-days/:publicId')
+  @ApiOperation({
+    summary: 'Desativa um dia nao util sem apagar historico.'
+  })
+  deactivateNonBusinessDay(
+    @Param('publicId') publicId: string,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.calendarService.deactivateNonBusinessDay(
+      publicId,
+      request.user!
+    );
   }
 
   @Delete(':publicId')

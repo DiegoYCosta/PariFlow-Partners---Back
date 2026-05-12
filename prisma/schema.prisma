@@ -99,6 +99,13 @@ enum SensitiveSessionLevel {
   CRITICAL
 }
 
+enum SensitiveSessionStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  REVOKED
+}
+
 enum SecurityEventType {
   LOGIN_SUCCESS
   LOGIN_FAILURE
@@ -112,6 +119,7 @@ enum SecurityEventType {
 enum CalendarEntryKind {
   REMINDER
   APPOINTMENT
+  NOTICE
 }
 
 enum CalendarEntryStatus {
@@ -176,7 +184,29 @@ enum ClientOnboardingRequestStatus {
 enum ClientOnboardingVerificationChannel {
   EMAIL
   PHONE
+  WHATSAPP
   NONE
+}
+
+enum ClientOnboardingVerificationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+enum NotificationOutboxChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELED
 }
 
 enum TenantRootCompanyStatus {
@@ -224,47 +254,114 @@ model TenantRootCompany {
   calendarEntries       CalendarEntry[]              @relation("CalendarEntryTenantRootCompany")
   securityEvents        SecurityEvent[]              @relation("SecurityEventTenantRootCompany")
   auditLogs             AuditLog[]                   @relation("AuditLogTenantRootCompany")
+  notificationOutbox    NotificationOutbox[]         @relation("NotificationOutboxTenantRootCompany")
+  nonBusinessDays       CalendarNonBusinessDay[]     @relation("CalendarNonBusinessDayTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
 }
 
+model ClientOnboardingCnpjRegistry {
+  id                     BigInt                                  @id @default(autoincrement())
+  publicId               String                                  @unique @db.VarChar(26)
+  cnpj                   String                                  @unique @db.VarChar(14)
+  status                 ClientOnboardingCnpjStatus
+  commercialContactName  String                                  @db.VarChar(160)
+  commercialContactEmail String?                                 @db.VarChar(180)
+  commercialContactPhone String?                                 @db.VarChar(30)
+  note                   String                                  @db.VarChar(255)
+  createdAt              DateTime                                @default(now())
+  updatedAt              DateTime                                @updatedAt
+  verificationChallenges ClientOnboardingVerificationChallenge[]
+
+  @@index([status])
+  @@map("cliente_onboarding_cnpj_registry")
+}
+
+model ClientOnboardingVerificationChallenge {
+  id                 BigInt                              @id @default(autoincrement())
+  publicId           String                              @unique @db.VarChar(26)
+  cnpjRegistryId     BigInt
+  channel            ClientOnboardingVerificationChannel
+  target             String                              @db.VarChar(180)
+  codeHash           String                              @db.VarChar(128)
+  status             ClientOnboardingVerificationStatus  @default(PENDING)
+  attempts           Int                                 @default(0)
+  maxAttempts        Int                                 @default(5)
+  expiresAt          DateTime
+  verifiedAt         DateTime?
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+  cnpjRegistry       ClientOnboardingCnpjRegistry        @relation(fields: [cnpjRegistryId], references: [id], onDelete: Cascade)
+  onboardingRequests ClientOnboardingRequest[]
+
+  @@index([cnpjRegistryId, status, expiresAt])
+  @@map("cliente_onboarding_verificacao")
+}
+
 model ClientOnboardingRequest {
-  id                          BigInt                              @id @default(autoincrement())
-  publicId                    String                              @unique @db.VarChar(26)
+  id                          BigInt                                 @id @default(autoincrement())
+  publicId                    String                                 @unique @db.VarChar(26)
   tenantRootCompanyId         BigInt?
-  cnpj                        String                              @db.VarChar(14)
-  tradeName                   String                              @db.VarChar(180)
-  legalName                   String                              @db.VarChar(180)
-  stateRegistration           String?                             @db.VarChar(40)
-  municipalRegistration       String?                             @db.VarChar(40)
-  companyType                 String                              @db.VarChar(80)
-  segment                     String                              @db.VarChar(180)
-  primaryCnae                 String?                             @db.VarChar(16)
-  companySize                 String                              @db.VarChar(50)
+  verificationChallengeId     BigInt?
+  cnpj                        String                                 @db.VarChar(14)
+  tradeName                   String                                 @db.VarChar(180)
+  legalName                   String                                 @db.VarChar(180)
+  stateRegistration           String?                                @db.VarChar(40)
+  municipalRegistration       String?                                @db.VarChar(40)
+  companyType                 String                                 @db.VarChar(80)
+  segment                     String                                 @db.VarChar(180)
+  primaryCnae                 String?                                @db.VarChar(16)
+  companySize                 String                                 @db.VarChar(50)
   cnpjStatus                  ClientOnboardingCnpjStatus
   contractType                ClientOnboardingContractType
-  status                      ClientOnboardingRequestStatus       @default(PENDING_VERIFICATION)
-  primaryContactName          String                              @db.VarChar(160)
-  primaryContactEmail         String?                             @db.VarChar(180)
-  primaryContactPhone         String?                             @db.VarChar(30)
+  status                      ClientOnboardingRequestStatus          @default(PENDING_VERIFICATION)
+  primaryContactName          String                                 @db.VarChar(160)
+  primaryContactEmail         String?                                @db.VarChar(180)
+  primaryContactPhone         String?                                @db.VarChar(30)
   accountQuotasJson           Json?
-  verificationAccepted        Boolean                             @default(false)
-  verificationChannel         ClientOnboardingVerificationChannel @default(NONE)
-  verificationTarget          String?                             @db.VarChar(180)
-  verificationMatchedRegistry Boolean                             @default(false)
-  reviewNotificationEmail     String?                             @db.VarChar(180)
-  submittedAt                 DateTime                            @default(now())
+  verificationAccepted        Boolean                                @default(false)
+  verificationChannel         ClientOnboardingVerificationChannel    @default(NONE)
+  verificationTarget          String?                                @db.VarChar(180)
+  verificationMatchedRegistry Boolean                                @default(false)
+  reviewNotificationEmail     String?                                @db.VarChar(180)
+  submittedAt                 DateTime                               @default(now())
   releasedAt                  DateTime?
   reviewedAt                  DateTime?
-  createdAt                   DateTime                            @default(now())
-  updatedAt                   DateTime                            @updatedAt
-  tenantRootCompany           TenantRootCompany?                  @relation("TenantRootCompanyOnboardingRequests", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  createdAt                   DateTime                               @default(now())
+  updatedAt                   DateTime                               @updatedAt
+  tenantRootCompany           TenantRootCompany?                     @relation("TenantRootCompanyOnboardingRequests", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  verificationChallenge       ClientOnboardingVerificationChallenge? @relation(fields: [verificationChallengeId], references: [id], onDelete: SetNull)
 
   @@index([cnpj, submittedAt])
   @@index([status, submittedAt])
   @@index([tenantRootCompanyId])
+  @@index([verificationChallengeId])
   @@map("cliente_onboarding_solicitacao")
+}
+
+model NotificationOutbox {
+  id                  BigInt                    @id @default(autoincrement())
+  publicId            String                    @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  channel             NotificationOutboxChannel
+  target              String                    @db.VarChar(180)
+  subject             String?                   @db.VarChar(180)
+  message             String                    @db.Text
+  status              NotificationOutboxStatus  @default(PENDING)
+  attempts            Int                       @default(0)
+  metadataJson        Json?
+  queuedAt            DateTime                  @default(now())
+  lastAttemptAt       DateTime?
+  nextAttemptAt       DateTime?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  failureReason       String?                   @db.VarChar(255)
+  tenantRootCompany   TenantRootCompany?        @relation("NotificationOutboxTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([status, queuedAt])
+  @@index([tenantRootCompanyId, queuedAt])
+  @@map("notification_outbox")
 }
 
 model UserSystem {
@@ -276,6 +373,7 @@ model UserSystem {
   clientCompanyId         BigInt?
   name                    String                   @db.VarChar(160)
   email                   String                   @unique @db.VarChar(180)
+  addressJson             Json?
   status                  UserSystemStatus         @default(ACTIVE)
   mfaEnabled              Boolean                  @default(false)
   lastAccessAt            DateTime?
@@ -298,6 +396,7 @@ model UserSystem {
   clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
   createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
   assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
+  createdNonBusinessDays  CalendarNonBusinessDay[] @relation("CalendarNonBusinessDayCreatedBy")
 
   @@index([tenantRootCompanyId])
   @@index([providerCompanyId])
@@ -342,6 +441,7 @@ model ProviderCompany {
   document            String             @unique @db.VarChar(20)
   status              String             @db.VarChar(30)
   contactsJson        Json?
+  addressJson         Json?
   notes               String?            @db.Text
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -756,6 +856,9 @@ model CalendarEntry {
   status                         CalendarEntryStatus        @default(SCHEDULED)
   priority                       CalendarEntryPriority      @default(NORMAL)
   targetType                     CalendarEntryTargetType    @default(GENERAL)
+  category                       String?                    @db.VarChar(80)
+  recurrenceRule                 String?                    @db.VarChar(80)
+  audienceJson                   Json?
   title                          String                     @db.VarChar(180)
   description                    String?                    @db.Text
   startsAt                       DateTime
@@ -764,6 +867,9 @@ model CalendarEntry {
   isAllDay                       Boolean                    @default(false)
   businessDayPolicy              CalendarBusinessDayPolicy  @default(ALLOW_NON_BUSINESS_DAY)
   holidayRegionCode              String?                    @db.VarChar(40)
+  appliesToRegionCode            String?                    @db.VarChar(40)
+  appliesToStateCode             String?                    @db.VarChar(2)
+  appliesToCityName              String?                    @db.VarChar(120)
   notificationPolicy             CalendarNotificationPolicy @default(ONE_BUSINESS_DAY_BEFORE)
   notificationOffsetBusinessDays Int                        @default(1)
   notificationTime               String                     @default("09:00") @db.VarChar(5)
@@ -792,6 +898,8 @@ model CalendarEntry {
   tenantRootCompany              TenantRootCompany?         @relation("CalendarEntryTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId, startsAt])
+  @@index([tenantRootCompanyId, appliesToRegionCode])
+  @@index([tenantRootCompanyId, appliesToStateCode])
   @@index([startsAt, status])
   @@index([kind, startsAt])
   @@index([personId, startsAt])
@@ -804,6 +912,31 @@ model CalendarEntry {
   @@index([assignedToUserSystemId, startsAt])
   @@index([notificationScheduledAt])
   @@map("agenda_item")
+}
+
+model CalendarNonBusinessDay {
+  id                    BigInt             @id @default(autoincrement())
+  publicId              String             @unique @db.VarChar(26)
+  tenantRootCompanyId   BigInt?
+  date                  DateTime
+  name                  String             @db.VarChar(160)
+  scope                 String             @default("CUSTOM") @db.VarChar(40)
+  regionCode            String?            @db.VarChar(40)
+  stateCode             String?            @db.VarChar(2)
+  cityName              String?            @db.VarChar(120)
+  isRecurringYearly     Boolean            @default(false)
+  active                Boolean            @default(true)
+  notes                 String?            @db.Text
+  createdByUserSystemId BigInt?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  tenantRootCompany     TenantRootCompany? @relation("CalendarNonBusinessDayTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  createdByUserSystem   UserSystem?        @relation("CalendarNonBusinessDayCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+
+  @@index([tenantRootCompanyId, date, active])
+  @@index([tenantRootCompanyId, regionCode, active])
+  @@index([tenantRootCompanyId, stateCode, active])
+  @@map("agenda_dia_nao_util")
 }
 
 model RefreshToken {
@@ -828,13 +961,18 @@ model SensitiveSession {
   publicId      String                @unique @db.VarChar(26)
   userSystemId  BigInt
   level         SensitiveSessionLevel
+  status        SensitiveSessionStatus @default(PENDING)
   justification String?               @db.Text
-  verifiedAt    DateTime
+  challengeHash String?               @db.VarChar(128)
+  attemptCount  Int                   @default(0)
+  requestedAt   DateTime              @default(now())
+  verifiedAt    DateTime?
   expiresAt     DateTime
   ipAddress     String?               @db.VarChar(64)
   userAgent     String?               @db.VarChar(255)
   userSystem    UserSystem            @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
 
+  @@index([userSystemId, status, expiresAt])
   @@map("sensitive_sessions")
 }
 

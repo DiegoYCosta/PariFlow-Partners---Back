@@ -9,10 +9,15 @@ import {
   OccurrenceVisibility,
   Prisma
 } from '@prisma/client';
+import {
+  tenantCreateRelation,
+  tenantWhere
+} from '../../common/tenant/tenant-scope';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateOccurrenceDto } from './dto/create-occurrence.dto';
 import { ListOccurrencesQueryDto } from './dto/list-occurrences-query.dto';
 import { UpdateOccurrenceDto } from './dto/update-occurrence.dto';
@@ -55,11 +60,11 @@ type OccurrenceRelationPatch = {
 export class OccurrencesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: ListOccurrencesQueryDto) {
+  async list(query: ListOccurrencesQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
-    const where = this.buildListWhere(query);
+    const where = tenantWhere(actor, this.buildListWhere(query));
 
     try {
       const [total, items] = await Promise.all([
@@ -82,11 +87,11 @@ export class OccurrencesService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.loadOccurrence(publicId);
+      const item = await this.loadOccurrence(publicId, actor);
 
       if (!item || item.status === 'REMOVED') {
         throw new NotFoundException('Ocorrencia nao encontrada.');
@@ -100,19 +105,26 @@ export class OccurrencesService {
     }
   }
 
-  async create(dto: CreateOccurrenceDto) {
+  async create(dto: CreateOccurrenceDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const relations = await this.resolveRelationsForCreate(dto);
+    const relations = await this.resolveRelationsForCreate(dto, actor);
 
     try {
       const item = await this.prisma.occurrence.create({
         data: {
           publicId: createPublicId('ocr'),
-          personId: relations.personId,
-          providerCompanyId: relations.providerCompanyId,
-          employmentLinkId: relations.employmentLinkId,
-          positionId: relations.positionId,
+          tenantRootCompany: tenantCreateRelation(actor),
+          person: { connect: { id: relations.personId } },
+          providerCompany: relations.providerCompanyId
+            ? { connect: { id: relations.providerCompanyId } }
+            : undefined,
+          employmentLink: relations.employmentLinkId
+            ? { connect: { id: relations.employmentLinkId } }
+            : undefined,
+          position: relations.positionId
+            ? { connect: { id: relations.positionId } }
+            : undefined,
           type: dto.type,
           scope: dto.scope,
           nature: dto.nature,
@@ -133,20 +145,24 @@ export class OccurrencesService {
     }
   }
 
-  async update(publicId: string, dto: UpdateOccurrenceDto) {
+  async update(
+    publicId: string,
+    dto: UpdateOccurrenceDto,
+    actor: AuthTokenPayload
+  ) {
     this.prisma.assertConfigured();
 
-    const current = await this.loadOccurrence(publicId);
+    const current = await this.loadOccurrence(publicId, actor);
 
     if (!current || current.status === 'REMOVED') {
       throw new NotFoundException('Ocorrencia nao encontrada.');
     }
 
-    const relations = await this.resolveRelationsForUpdate(current, dto);
+    const relations = await this.resolveRelationsForUpdate(current, dto, actor);
 
     try {
       const updated = await this.prisma.occurrence.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           personId: relations.personId,
           providerCompanyId: relations.providerCompanyId,
@@ -174,10 +190,10 @@ export class OccurrencesService {
     }
   }
 
-  async remove(publicId: string) {
+  async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const current = await this.loadOccurrence(publicId);
+    const current = await this.loadOccurrence(publicId, actor);
 
     if (!current || current.status === 'REMOVED') {
       throw new NotFoundException('Ocorrencia nao encontrada.');
@@ -185,7 +201,7 @@ export class OccurrencesService {
 
     try {
       const removed = await this.prisma.occurrence.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           status: 'REMOVED'
         },
@@ -296,19 +312,21 @@ export class OccurrencesService {
   }
 
   private async resolveRelationsForCreate(
-    dto: CreateOccurrenceDto
+    dto: CreateOccurrenceDto,
+    actor: AuthTokenPayload
   ): Promise<OccurrenceResolvedRelations> {
     return this.resolveRelations({
       personPublicId: dto.personPublicId,
       providerCompanyPublicId: dto.providerCompanyPublicId,
       employmentLinkPublicId: dto.employmentLinkPublicId,
       positionPublicId: dto.positionPublicId
-    });
+    }, actor);
   }
 
   private async resolveRelationsForUpdate(
     current: OccurrenceWithRelations,
-    dto: UpdateOccurrenceDto
+    dto: UpdateOccurrenceDto,
+    actor: AuthTokenPayload
   ): Promise<OccurrenceResolvedRelations> {
     const patch = this.normalizeRelationPatch(dto);
 
@@ -326,7 +344,7 @@ export class OccurrencesService {
         patch.positionPublicId !== undefined
           ? patch.positionPublicId
           : current.position?.publicId ?? null
-    });
+    }, actor);
   }
 
   private normalizeRelationPatch(
@@ -353,22 +371,26 @@ export class OccurrencesService {
     providerCompanyPublicId?: string | null;
     employmentLinkPublicId?: string | null;
     positionPublicId?: string | null;
-  }): Promise<OccurrenceResolvedRelations> {
+  }, actor: AuthTokenPayload): Promise<OccurrenceResolvedRelations> {
     const [person, providerCompany, employmentLink, position] =
       await Promise.all([
-        this.prisma.person.findUnique({
-          where: { publicId: input.personPublicId },
+        this.prisma.person.findFirst({
+          where: tenantWhere(actor, { publicId: input.personPublicId }),
           select: { id: true, publicId: true }
         }),
         input.providerCompanyPublicId
-          ? this.prisma.providerCompany.findUnique({
-              where: { publicId: input.providerCompanyPublicId },
+          ? this.prisma.providerCompany.findFirst({
+              where: tenantWhere(actor, {
+                publicId: input.providerCompanyPublicId
+              }),
               select: { id: true, publicId: true }
             })
           : Promise.resolve(null),
         input.employmentLinkPublicId
-          ? this.prisma.employmentLink.findUnique({
-              where: { publicId: input.employmentLinkPublicId },
+          ? this.prisma.employmentLink.findFirst({
+              where: tenantWhere(actor, {
+                publicId: input.employmentLinkPublicId
+              }),
               select: {
                 id: true,
                 publicId: true,
@@ -379,8 +401,8 @@ export class OccurrencesService {
             })
           : Promise.resolve(null),
         input.positionPublicId
-          ? this.prisma.position.findUnique({
-              where: { publicId: input.positionPublicId },
+          ? this.prisma.position.findFirst({
+              where: tenantWhere(actor, { publicId: input.positionPublicId }),
               select: { id: true, publicId: true }
             })
           : Promise.resolve(null)
@@ -435,9 +457,9 @@ export class OccurrencesService {
     };
   }
 
-  private loadOccurrence(publicId: string) {
-    return this.prisma.occurrence.findUnique({
-      where: { publicId },
+  private loadOccurrence(publicId: string, actor: AuthTokenPayload) {
+    return this.prisma.occurrence.findFirst({
+      where: tenantWhere(actor, { publicId }),
       include: occurrenceInclude
     });
   }

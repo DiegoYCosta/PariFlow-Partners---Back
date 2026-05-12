@@ -1,9 +1,12 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClientOnboardingService } from './client-onboarding.service';
 import { CreateClientOnboardingDto } from './dto/create-client-onboarding.dto';
+import { StartClientOnboardingVerificationDto } from './dto/start-client-onboarding-verification.dto';
+import { PublicOnboardingRateLimitGuard } from './public-onboarding-rate-limit.guard';
 
 @ApiTags('public-client-onboarding')
+@UseGuards(PublicOnboardingRateLimitGuard)
 @Controller('public/client-onboarding')
 export class ClientOnboardingController {
   constructor(
@@ -41,5 +44,13 @@ export class ClientOnboardingController {
   })
   create(@Body() dto: CreateClientOnboardingDto) {
     return this.clientOnboardingService.create(dto);
+  }
+
+  @Post('verification/start')
+  @ApiOperation({
+    summary: 'Gera codigo expirarivel para verificacao do cadastro publico.'
+  })
+  startVerification(@Body() dto: StartClientOnboardingVerificationDto) {
+    return this.clientOnboardingService.startVerification(dto);
   }
 }

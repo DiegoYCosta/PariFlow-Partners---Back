@@ -52,6 +52,18 @@ export class CreateProviderCompanyDto {
   contactsJson?: Record<string, unknown>;
 
   @ApiPropertyOptional({
+    example: {
+      city: 'Campinas',
+      state: 'SP'
+    },
+    description:
+      'Endereco em bloco flexivel para filtros territoriais de calendario e relatorios.'
+  })
+  @IsOptional()
+  @IsObject()
+  addressJson?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
     example: 'Empresa principal do grupo.'
   })
   @IsOptional()

@@ -15,6 +15,7 @@ import {
 import { createPublicId } from '../../common/utils/public-id';
 import { assertPublicSubmissionAllowed } from '../../common/utils/public-submission';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
+import { tenantWhere } from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateEntityTagSubmissionDto } from './dto/create-entity-tag-submission.dto';
@@ -37,6 +38,12 @@ type EntityTagWithRelations = Prisma.EntityTagGetPayload<{
   };
 }>;
 
+type EntityTagTargetReference = {
+  personId: bigint | null;
+  providerCompanyId: bigint | null;
+  tenantRootCompanyId: bigint | null;
+};
+
 @Injectable()
 export class EntityTagsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -58,6 +65,7 @@ export class EntityTagsService {
       const item = await this.prisma.entityTag.create({
         data: {
           publicId: createPublicId('tag'),
+          tenantRootCompanyId: target.tenantRootCompanyId ?? undefined,
           targetType: dto.targetType,
           personId: target.personId,
           providerCompanyId: target.providerCompanyId,
@@ -98,16 +106,17 @@ export class EntityTagsService {
     this.prisma.assertConfigured();
 
     const [target, actorUserId, ownerUserId, allowedUserIds] = await Promise.all([
-      this.resolveTarget(dto.targetType, dto.targetPublicId),
+      this.resolveTarget(dto.targetType, dto.targetPublicId, actor),
       this.resolveAuthenticatedUserId(actor.sub),
-      this.resolveOwnerUserId(dto.ownerUserPublicId),
-      this.resolveAudienceUserIds(dto.allowedUserPublicIds)
+      this.resolveOwnerUserId(dto.ownerUserPublicId, actor),
+      this.resolveAudienceUserIds(dto.allowedUserPublicIds, actor)
     ]);
 
     try {
       const item = await this.prisma.entityTag.create({
         data: {
           publicId: createPublicId('tag'),
+          tenantRootCompanyId: target.tenantRootCompanyId ?? undefined,
           targetType: dto.targetType,
           personId: target.personId,
           providerCompanyId: target.providerCompanyId,
@@ -145,17 +154,21 @@ export class EntityTagsService {
   async list(query: ListEntityTagsQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const target = await this.resolveTarget(query.targetType, query.targetPublicId);
+    const target = await this.resolveTarget(
+      query.targetType,
+      query.targetPublicId,
+      actor
+    );
 
     try {
       const items = await this.prisma.entityTag.findMany({
-        where: {
+        where: tenantWhere(actor, {
           status: EntityTagStatus.ACTIVE,
           personId: target.personId,
           providerCompanyId: target.providerCompanyId,
           classification: query.classification,
           AND: [this.buildVisibilityWhere(actor)]
-        },
+        }),
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
         include: this.entityTagInclude
       });
@@ -173,11 +186,11 @@ export class EntityTagsService {
 
     try {
       const item = await this.prisma.entityTag.findFirst({
-        where: {
+        where: tenantWhere(actor, {
           publicId,
           status: EntityTagStatus.ACTIVE,
           AND: [this.buildVisibilityWhere(actor)]
-        },
+        }),
         include: this.entityTagInclude
       });
 
@@ -200,7 +213,7 @@ export class EntityTagsService {
   ) {
     this.prisma.assertConfigured();
 
-    const item = await this.ensureActiveTagWithRelations(publicId);
+    const item = await this.ensureActiveTagWithRelations(publicId, actor);
 
     if (!this.canManageTag(item, actor)) {
       throw new ForbiddenException(
@@ -210,16 +223,16 @@ export class EntityTagsService {
 
     const [ownerUserId, allowedUserIds] = await Promise.all([
       dto.ownerUserPublicId
-        ? this.resolveOwnerUserId(dto.ownerUserPublicId)
+        ? this.resolveOwnerUserId(dto.ownerUserPublicId, actor)
         : Promise.resolve<bigint | undefined>(undefined),
       dto.allowedUserPublicIds
-        ? this.resolveAudienceUserIds(dto.allowedUserPublicIds)
+        ? this.resolveAudienceUserIds(dto.allowedUserPublicIds, actor)
         : Promise.resolve<bigint[] | undefined>(undefined)
     ]);
 
     try {
       const updated = await this.prisma.entityTag.update({
-        where: { publicId },
+        where: { id: item.id },
         data: {
           ownerUserSystemId: ownerUserId,
           label: dto.label,
@@ -259,7 +272,7 @@ export class EntityTagsService {
     this.prisma.assertConfigured();
 
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
-    const item = await this.ensureActiveTagWithRelations(publicId);
+    const item = await this.ensureActiveTagWithRelations(publicId, actor);
 
     if (!this.canManageTag(item, actor)) {
       throw new ForbiddenException(
@@ -269,7 +282,7 @@ export class EntityTagsService {
 
     try {
       const removed = await this.prisma.entityTag.update({
-        where: { publicId },
+        where: { id: item.id },
         data: {
           status: EntityTagStatus.REMOVED,
           removedAt: new Date(),
@@ -338,16 +351,16 @@ export class EntityTagsService {
 
   private async resolveTarget(
     targetType: EntityTagTargetType,
-    targetPublicId: string
-  ): Promise<{
-    personId: bigint | null;
-    providerCompanyId: bigint | null;
-  }> {
+    targetPublicId: string,
+    actor?: AuthTokenPayload
+  ): Promise<EntityTagTargetReference> {
     switch (targetType) {
       case EntityTagTargetType.PERSON: {
-        const person = await this.prisma.person.findUnique({
-          where: { publicId: targetPublicId },
-          select: { id: true }
+        const person = await this.prisma.person.findFirst({
+          where: actor
+            ? tenantWhere(actor, { publicId: targetPublicId })
+            : { publicId: targetPublicId },
+          select: { id: true, tenantRootCompanyId: true }
         });
 
         if (!person) {
@@ -356,13 +369,16 @@ export class EntityTagsService {
 
         return {
           personId: person.id,
-          providerCompanyId: null
+          providerCompanyId: null,
+          tenantRootCompanyId: person.tenantRootCompanyId
         };
       }
       case EntityTagTargetType.PROVIDER_COMPANY: {
-        const providerCompany = await this.prisma.providerCompany.findUnique({
-          where: { publicId: targetPublicId },
-          select: { id: true }
+        const providerCompany = await this.prisma.providerCompany.findFirst({
+          where: actor
+            ? tenantWhere(actor, { publicId: targetPublicId })
+            : { publicId: targetPublicId },
+          select: { id: true, tenantRootCompanyId: true }
         });
 
         if (!providerCompany) {
@@ -373,7 +389,8 @@ export class EntityTagsService {
 
         return {
           personId: null,
-          providerCompanyId: providerCompany.id
+          providerCompanyId: providerCompany.id,
+          tenantRootCompanyId: providerCompany.tenantRootCompanyId
         };
       }
       default:
@@ -382,13 +399,14 @@ export class EntityTagsService {
   }
 
   private async ensureActiveTagWithRelations(
-    publicId: string
+    publicId: string,
+    actor: AuthTokenPayload
   ): Promise<EntityTagWithRelations> {
     const item = await this.prisma.entityTag.findFirst({
-      where: {
+      where: tenantWhere(actor, {
         publicId,
         status: EntityTagStatus.ACTIVE
-      },
+      }),
       include: this.entityTagInclude
     });
 
@@ -414,9 +432,14 @@ export class EntityTagsService {
     return user.id;
   }
 
-  private async resolveOwnerUserId(userPublicId: string): Promise<bigint> {
-    const user = await this.prisma.userSystem.findUnique({
-      where: { publicId: userPublicId },
+  private async resolveOwnerUserId(
+    userPublicId: string,
+    actor?: AuthTokenPayload
+  ): Promise<bigint> {
+    const user = await this.prisma.userSystem.findFirst({
+      where: actor
+        ? tenantWhere(actor, { publicId: userPublicId })
+        : { publicId: userPublicId },
       select: { id: true }
     });
 
@@ -430,7 +453,8 @@ export class EntityTagsService {
   }
 
   private async resolveAudienceUserIds(
-    userPublicIds?: string[]
+    userPublicIds?: string[],
+    actor?: AuthTokenPayload
   ): Promise<bigint[]> {
     const normalized = Array.from(
       new Set(
@@ -445,11 +469,17 @@ export class EntityTagsService {
     }
 
     const users = await this.prisma.userSystem.findMany({
-      where: {
-        publicId: {
-          in: normalized
-        }
-      },
+      where: actor
+        ? tenantWhere(actor, {
+            publicId: {
+              in: normalized
+            }
+          })
+        : {
+            publicId: {
+              in: normalized
+            }
+          },
       select: {
         id: true,
         publicId: true
