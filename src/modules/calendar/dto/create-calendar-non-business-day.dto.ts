@@ -44,6 +44,15 @@ export class CreateCalendarNonBusinessDayDto {
   @MaxLength(40)
   regionCode?: string;
 
+  @ApiPropertyOptional({ example: 'SP' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @MaxLength(2)
+  stateCode?: string;
+
   @ApiPropertyOptional({ example: 'Campinas' })
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))

@@ -17,6 +17,7 @@ import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from '../auth/guards/privileged-access.guard';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CalendarService } from './calendar.service';
+import { CalendarApplicabilityQueryDto } from './dto/calendar-applicability-query.dto';
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto';
 import { CreateCalendarNonBusinessDayDto } from './dto/create-calendar-non-business-day.dto';
 import { ListCalendarEntriesQueryDto } from './dto/list-calendar-entries-query.dto';
@@ -83,6 +84,18 @@ export class CalendarController {
     @Req() request: AuthenticatedRequest
   ) {
     return this.calendarService.createNonBusinessDay(dto, request.user!);
+  }
+
+  @Get('applicability')
+  @ApiOperation({
+    summary:
+      'Mostra pessoas e empresas relacionadas a uma cidade/estado do calendario.'
+  })
+  applicability(
+    @Query() query: CalendarApplicabilityQueryDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.calendarService.applicability(query, request.user!);
   }
 
   @Patch(':publicId')

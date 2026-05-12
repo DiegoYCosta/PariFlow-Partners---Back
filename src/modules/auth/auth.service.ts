@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   AccessProfileCode,
+  Prisma,
   RefreshTokenStatus,
   SecurityEventType,
   SensitiveAudienceGroup,
@@ -18,6 +19,7 @@ import { databaseUrl, env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { FirebaseAdminService } from '../../infra/firebase/firebase-admin.service';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
+import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
 import {
   AuthCapabilities,
   AuthTenantContext,
@@ -33,6 +35,7 @@ type SessionIdentity = {
 type SessionUser = SessionIdentity & {
   publicId: string;
   tenantRootCompany?: AuthTenantContext | null;
+  addressJson?: Prisma.JsonValue | null;
 };
 
 type SessionSnapshot = {
@@ -159,13 +162,28 @@ export class AuthService {
   }
 
   async getCurrentUser(payload: AuthTokenPayload) {
+    const user = databaseUrl
+      ? await this.prisma.userSystem.findUnique({
+          where: { publicId: payload.sub },
+          select: {
+            publicId: true,
+            firebaseUid: true,
+            name: true,
+            email: true,
+            addressJson: true
+          }
+        })
+      : null;
+
     // Mantem o formato vizinho ao exchange para o front reidratar sessao sem
     // precisar abrir mapa de compatibilidade entre login e sessao corrente.
     return {
       user: {
-        publicId: payload.sub,
-        firebaseUid: payload.firebaseUid,
-        email: payload.email,
+        publicId: user?.publicId ?? payload.sub,
+        firebaseUid: user?.firebaseUid ?? payload.firebaseUid,
+        nome: user?.name ?? payload.email ?? 'Sessao',
+        email: user?.email ?? payload.email,
+        addressJson: user?.addressJson ?? null,
         tenantRootCompany: payload.tenantRootCompany ?? null
       },
       securityContext: payload.securityContext,
@@ -173,6 +191,25 @@ export class AuthService {
       audienceGroups: payload.audienceGroups,
       capabilities: payload.capabilities
     };
+  }
+
+  async updateCurrentUser(
+    dto: UpdateCurrentUserDto,
+    payload: AuthTokenPayload
+  ) {
+    this.prisma.assertConfigured();
+
+    await this.prisma.userSystem.update({
+      where: { publicId: payload.sub },
+      data: {
+        addressJson:
+          dto.addressJson === undefined
+            ? undefined
+            : (dto.addressJson as Prisma.InputJsonValue)
+      }
+    });
+
+    return this.getCurrentUser(payload);
   }
 
   async logout(refreshToken?: string) {
@@ -300,6 +337,7 @@ export class AuthService {
           firebaseUid: persistedUser.firebaseUid ?? identity.firebaseUid,
           nome: persistedUser.name,
           email: persistedUser.email,
+          addressJson: persistedUser.addressJson ?? null,
           tenantRootCompany: null
         },
         userSystemId: persistedUser.id,
@@ -368,6 +406,7 @@ export class AuthService {
     firebaseUid: string | null;
     name: string;
     email: string | null;
+    addressJson?: Prisma.JsonValue | null;
     status: UserSystemStatus;
   }): Promise<SessionSnapshot> {
     if (persistedUser.status !== UserSystemStatus.ACTIVE) {
@@ -401,6 +440,7 @@ export class AuthService {
         firebaseUid: persistedUser.firebaseUid ?? '',
         nome: persistedUser.name,
         email: persistedUser.email,
+        addressJson: userWithTenant?.addressJson ?? null,
         tenantRootCompany
       },
       userSystemId: persistedUser.id,

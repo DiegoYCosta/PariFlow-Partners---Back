@@ -366,6 +366,7 @@ model UserSystem {
   clientCompanyId         BigInt?
   name                    String                   @db.VarChar(160)
   email                   String                   @unique @db.VarChar(180)
+  addressJson             Json?
   status                  UserSystemStatus         @default(ACTIVE)
   mfaEnabled              Boolean                  @default(false)
   lastAccessAt            DateTime?
@@ -433,6 +434,7 @@ model ProviderCompany {
   document            String             @unique @db.VarChar(20)
   status              String             @db.VarChar(30)
   contactsJson        Json?
+  addressJson         Json?
   notes               String?            @db.Text
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -858,6 +860,9 @@ model CalendarEntry {
   isAllDay                       Boolean                    @default(false)
   businessDayPolicy              CalendarBusinessDayPolicy  @default(ALLOW_NON_BUSINESS_DAY)
   holidayRegionCode              String?                    @db.VarChar(40)
+  appliesToRegionCode            String?                    @db.VarChar(40)
+  appliesToStateCode             String?                    @db.VarChar(2)
+  appliesToCityName              String?                    @db.VarChar(120)
   notificationPolicy             CalendarNotificationPolicy @default(ONE_BUSINESS_DAY_BEFORE)
   notificationOffsetBusinessDays Int                        @default(1)
   notificationTime               String                     @default("09:00") @db.VarChar(5)
@@ -886,6 +891,8 @@ model CalendarEntry {
   tenantRootCompany              TenantRootCompany?         @relation("CalendarEntryTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId, startsAt])
+  @@index([tenantRootCompanyId, appliesToRegionCode])
+  @@index([tenantRootCompanyId, appliesToStateCode])
   @@index([startsAt, status])
   @@index([kind, startsAt])
   @@index([personId, startsAt])
@@ -908,6 +915,7 @@ model CalendarNonBusinessDay {
   name                  String             @db.VarChar(160)
   scope                 String             @default("CUSTOM") @db.VarChar(40)
   regionCode            String?            @db.VarChar(40)
+  stateCode             String?            @db.VarChar(2)
   cityName              String?            @db.VarChar(120)
   isRecurringYearly     Boolean            @default(false)
   active                Boolean            @default(true)
@@ -920,6 +928,7 @@ model CalendarNonBusinessDay {
 
   @@index([tenantRootCompanyId, date, active])
   @@index([tenantRootCompanyId, regionCode, active])
+  @@index([tenantRootCompanyId, stateCode, active])
   @@map("agenda_dia_nao_util")
 }
 

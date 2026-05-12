@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Inject,
+  Patch,
   Post,
   Req,
   Res,
@@ -17,6 +18,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRefreshCookieOptions } from '../../common/utils/cookie-options';
 import { RefreshSessionDto } from './dto/refresh-session.dto';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
+import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
 import { InternalAuthGuard } from './guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from './guards/privileged-access.guard';
 import { AuthTokenPayload } from './interfaces/auth-token-payload.interface';
@@ -69,6 +71,19 @@ export class AuthController {
     // /me deve espelhar o retrato de sessao de forma estavel para reidratar
     // estado, reabrir aba e validar renovacao sem surpresas por modulo.
     return this.authService.getCurrentUser(request.user!);
+  }
+
+  @Patch('me')
+  @UseGuards(InternalAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Atualiza preferencias simples do usuario autenticado.'
+  })
+  async updateMe(
+    @Body() dto: UpdateCurrentUserDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.authService.updateCurrentUser(dto, request.user!);
   }
 
   @Post('refresh')

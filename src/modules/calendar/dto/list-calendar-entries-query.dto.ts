@@ -107,6 +107,34 @@ export class ListCalendarEntriesQueryDto {
   @MaxLength(40)
   holidayRegionCode?: string;
 
+  @ApiPropertyOptional({ example: 'BR-SP-CAMPINAS' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  appliesToRegionCode?: string;
+
+  @ApiPropertyOptional({ example: 'SP' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2)
+  appliesToStateCode?: string;
+
+  @ApiPropertyOptional({ example: 'Campinas' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  appliesToCityName?: string;
+
   @ApiPropertyOptional({
     example: '2026-05-01',
     description: 'Data inicial do recorte. Aceita ISO, YYYY-MM-DD ou DD/MM/AAAA.'

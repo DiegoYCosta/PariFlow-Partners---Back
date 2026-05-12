@@ -35,6 +35,16 @@ export class ListCalendarNonBusinessDaysQueryDto {
   @MaxLength(40)
   regionCode?: string;
 
+  @ApiPropertyOptional({ example: 'SP' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2)
+  stateCode?: string;
+
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')

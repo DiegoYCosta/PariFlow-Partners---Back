@@ -417,7 +417,6 @@ export class ReportsService {
     if (statusFilter) {
       where.status = statusFilter;
     }
-
     const links = await this.prisma.employmentLink.findMany({
       where: tenantWhere(actor, where),
       take: reportRowLimit,
@@ -1025,6 +1024,21 @@ export class ReportsService {
     if (statusFilter) {
       where.status = statusFilter;
     }
+    const regionFilter =
+      this.filterValue(filters, "Regiao calendario") ??
+      this.filterValue(filters, "Regiao");
+    const stateFilter =
+      this.filterValue(filters, "Estado") ?? this.filterValue(filters, "UF");
+    const cityFilter = this.filterValue(filters, "Cidade");
+    if (regionFilter) {
+      where.appliesToRegionCode = regionFilter.trim().toUpperCase();
+    }
+    if (stateFilter) {
+      where.appliesToStateCode = stateFilter.trim().toUpperCase();
+    }
+    if (cityFilter) {
+      where.appliesToCityName = { contains: cityFilter.trim() };
+    }
 
     const entries = await this.prisma.calendarEntry.findMany({
       where: tenantWhere(actor, where),
@@ -1124,6 +1138,11 @@ export class ReportsService {
           entry.startsAt,
           entry.holidayRegionCode,
         ),
+        aplicabilidade: this.calendarApplicabilityLabel(
+          entry.appliesToRegionCode,
+          entry.appliesToStateCode,
+          entry.appliesToCityName,
+        ),
       };
     });
 
@@ -1141,6 +1160,9 @@ export class ReportsService {
       "vinculo",
       "empresa",
       "contrato",
+    ]);
+    rows = this.applyTextFilter(rows, filters, "Aplicabilidade", [
+      "aplicabilidade",
     ]);
 
     return {
@@ -1172,6 +1194,7 @@ export class ReportsService {
         { key: "notificacao", label: "Notificacao" },
         { key: "canal", label: "Canal" },
         { key: "diaNaoUtil", label: "Dia nao util" },
+        { key: "aplicabilidade", label: "Aplicabilidade" },
       ],
       rows,
       notes: [
@@ -1934,6 +1957,17 @@ export class ReportsService {
       labels.push(`Feriado (${holidayRegionCode})`);
     }
     return labels.length > 0 ? labels.join(" / ") : "Dia util";
+  }
+
+  private calendarApplicabilityLabel(
+    regionCode?: string | null,
+    stateCode?: string | null,
+    cityName?: string | null,
+  ): string {
+    const labels = [cityName, stateCode, regionCode ? `regiao ${regionCode}` : null]
+      .map((value) => this.text(value).value)
+      .filter((value) => value.length > 0);
+    return labels.length > 0 ? labels.join(" / ") : "Geral";
   }
 
   private calendarChannelsLabel(value: Prisma.JsonValue): string {

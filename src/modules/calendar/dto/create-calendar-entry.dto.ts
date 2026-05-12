@@ -142,6 +142,35 @@ export class CreateCalendarEntryDto {
   @MaxLength(40)
   holidayRegionCode?: string;
 
+  @ApiPropertyOptional({
+    example: 'BR-SP-CAMPINAS',
+    description:
+      'Escopo territorial de aplicacao do item para filtros e relatorios.'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @MaxLength(40)
+  appliesToRegionCode?: string;
+
+  @ApiPropertyOptional({ example: 'SP' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @MaxLength(2)
+  appliesToStateCode?: string;
+
+  @ApiPropertyOptional({ example: 'Campinas' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(120)
+  appliesToCityName?: string;
+
   @ApiPropertyOptional({ enum: CalendarNotificationPolicy })
   @IsOptional()
   @IsEnum(CalendarNotificationPolicy)

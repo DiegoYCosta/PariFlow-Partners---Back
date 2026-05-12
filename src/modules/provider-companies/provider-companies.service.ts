@@ -107,6 +107,7 @@ export class ProviderCompaniesService {
           document: dto.document,
           status: dto.status,
           contactsJson: dto.contactsJson as Prisma.InputJsonValue | undefined,
+          addressJson: dto.addressJson as Prisma.InputJsonValue | undefined,
           notes: dto.notes ?? null
         }
       });
@@ -136,6 +137,10 @@ export class ProviderCompaniesService {
             dto.contactsJson === undefined
               ? undefined
               : (dto.contactsJson as Prisma.InputJsonValue),
+          addressJson:
+            dto.addressJson === undefined
+              ? undefined
+              : (dto.addressJson as Prisma.InputJsonValue),
           notes: dto.notes === undefined ? undefined : dto.notes.trim() || null
         }
       });
@@ -195,6 +200,7 @@ export class ProviderCompaniesService {
       document: item.document,
       status: item.status,
       contactsJson: item.contactsJson,
+      addressJson: item.addressJson,
       notes: item.notes,
       contractCount: '_count' in item ? item._count.contracts : undefined,
       linkCount: '_count' in item ? item._count.links : undefined,
