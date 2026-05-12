@@ -13,6 +13,10 @@ import {
   CalendarNotificationPolicy,
   Prisma
 } from '@prisma/client';
+import {
+  tenantCreateRelation,
+  tenantWhere
+} from '../../common/tenant/tenant-scope';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
@@ -106,7 +110,7 @@ export class CalendarService {
     }
 
     const items = await this.prisma.calendarEntry.findMany({
-      where: and.length > 0 ? { AND: and } : {},
+      where: tenantWhere(actor, and.length > 0 ? { AND: and } : {}),
       take: 100,
       orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
       include: calendarEntryInclude
@@ -126,7 +130,7 @@ export class CalendarService {
     this.prisma.assertConfigured();
 
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
-    const relations = await this.resolveTargetRelations(dto);
+    const relations = await this.resolveTargetRelations(dto, actor);
     const startsAt = this.parseDateTime(dto.startsAt, dto.notificationTime);
     const endsAt = dto.endsAt
       ? this.parseDateTime(dto.endsAt, dto.notificationTime)
@@ -145,6 +149,7 @@ export class CalendarService {
     const created = await this.prisma.calendarEntry.create({
       data: {
         publicId: createPublicId('agi'),
+        tenantRootCompany: tenantCreateRelation(actor),
         kind: dto.kind,
         status: dto.status,
         priority: dto.priority,
@@ -163,14 +168,26 @@ export class CalendarService {
         notificationScheduledAt,
         notificationChannelsJson:
           notificationChannels as Prisma.InputJsonValue,
-        personId: relations.personId,
-        providerCompanyId: relations.providerCompanyId,
-        clientCompanyId: relations.clientCompanyId,
-        contractId: relations.contractId,
-        employmentLinkId: relations.employmentLinkId,
-        positionId: relations.positionId,
-        createdByUserSystemId: actorUserId,
-        assignedToUserSystemId: actorUserId
+        person: relations.personId
+          ? { connect: { id: relations.personId } }
+          : undefined,
+        providerCompany: relations.providerCompanyId
+          ? { connect: { id: relations.providerCompanyId } }
+          : undefined,
+        clientCompany: relations.clientCompanyId
+          ? { connect: { id: relations.clientCompanyId } }
+          : undefined,
+        contract: relations.contractId
+          ? { connect: { id: relations.contractId } }
+          : undefined,
+        employmentLink: relations.employmentLinkId
+          ? { connect: { id: relations.employmentLinkId } }
+          : undefined,
+        position: relations.positionId
+          ? { connect: { id: relations.positionId } }
+          : undefined,
+        createdByUserSystem: { connect: { id: actorUserId } },
+        assignedToUserSystem: { connect: { id: actorUserId } }
       },
       include: calendarEntryInclude
     });
@@ -193,14 +210,14 @@ export class CalendarService {
     this.prisma.assertConfigured();
 
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
-    const current = await this.ensureEntry(publicId);
+    const current = await this.ensureEntry(publicId, actor);
     if (!this.canManage(current, actor)) {
       throw new ForbiddenException('Voce nao pode alterar este item de agenda.');
     }
 
     const hasRelationUpdate = this.hasRelationUpdate(dto);
     const relations = hasRelationUpdate
-      ? await this.resolveTargetRelations(dto)
+      ? await this.resolveTargetRelations(dto, actor)
       : undefined;
     const startsAt = dto.startsAt
       ? this.parseDateTime(
@@ -236,7 +253,7 @@ export class CalendarService {
     });
 
     const updated = await this.prisma.calendarEntry.update({
-      where: { publicId },
+      where: { id: current.id },
       data: {
         ...(dto.kind ? { kind: dto.kind } : {}),
         ...(dto.status ? { status: dto.status } : {}),
@@ -293,13 +310,13 @@ export class CalendarService {
     this.prisma.assertConfigured();
 
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
-    const current = await this.ensureEntry(publicId);
+    const current = await this.ensureEntry(publicId, actor);
     if (!this.canManage(current, actor)) {
       throw new ForbiddenException('Voce nao pode cancelar este item de agenda.');
     }
 
     const canceled = await this.prisma.calendarEntry.update({
-      where: { publicId },
+      where: { id: current.id },
       data: {
         status: CalendarEntryStatus.CANCELED,
         canceledAt: new Date()
@@ -318,10 +335,11 @@ export class CalendarService {
   }
 
   private async ensureEntry(
-    publicId: string
+    publicId: string,
+    actor: AuthTokenPayload
   ): Promise<CalendarEntryWithRelations> {
-    const item = await this.prisma.calendarEntry.findUnique({
-      where: { publicId },
+    const item = await this.prisma.calendarEntry.findFirst({
+      where: tenantWhere(actor, { publicId }),
       include: calendarEntryInclude
     });
 
@@ -341,7 +359,8 @@ export class CalendarService {
       | 'contractPublicId'
       | 'employmentLinkPublicId'
       | 'positionPublicId'
-    >
+    >,
+    actor: AuthTokenPayload
   ): Promise<CalendarTargetRelations> {
     const [
       person,
@@ -352,38 +371,40 @@ export class CalendarService {
       position
     ] = await Promise.all([
       dto.personPublicId
-        ? this.prisma.person.findUnique({
-            where: { publicId: dto.personPublicId },
+        ? this.prisma.person.findFirst({
+            where: tenantWhere(actor, { publicId: dto.personPublicId }),
             select: { id: true }
           })
         : null,
       dto.providerCompanyPublicId
-        ? this.prisma.providerCompany.findUnique({
-            where: { publicId: dto.providerCompanyPublicId },
+        ? this.prisma.providerCompany.findFirst({
+            where: tenantWhere(actor, {
+              publicId: dto.providerCompanyPublicId
+            }),
             select: { id: true }
           })
         : null,
       dto.clientCompanyPublicId
-        ? this.prisma.clientCompany.findUnique({
-            where: { publicId: dto.clientCompanyPublicId },
+        ? this.prisma.clientCompany.findFirst({
+            where: tenantWhere(actor, { publicId: dto.clientCompanyPublicId }),
             select: { id: true }
           })
         : null,
       dto.contractPublicId
-        ? this.prisma.contract.findUnique({
-            where: { publicId: dto.contractPublicId },
+        ? this.prisma.contract.findFirst({
+            where: tenantWhere(actor, { publicId: dto.contractPublicId }),
             select: { id: true }
           })
         : null,
       dto.employmentLinkPublicId
-        ? this.prisma.employmentLink.findUnique({
-            where: { publicId: dto.employmentLinkPublicId },
+        ? this.prisma.employmentLink.findFirst({
+            where: tenantWhere(actor, { publicId: dto.employmentLinkPublicId }),
             select: { id: true }
           })
         : null,
       dto.positionPublicId
-        ? this.prisma.position.findUnique({
-            where: { publicId: dto.positionPublicId },
+        ? this.prisma.position.findFirst({
+            where: tenantWhere(actor, { publicId: dto.positionPublicId }),
             select: { id: true }
           })
         : null

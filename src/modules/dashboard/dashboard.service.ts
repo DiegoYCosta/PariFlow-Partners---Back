@@ -1,6 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { EmploymentLinkStatus, OccurrenceNature, Prisma } from "@prisma/client";
+import { tenantWhere } from "../../common/tenant/tenant-scope";
 import { PrismaService } from "../../infra/database/prisma.service";
+import { AuthTokenPayload } from "../auth/interfaces/auth-token-payload.interface";
 
 type DashboardHomeQuery = Record<string, string | string[] | undefined>;
 
@@ -55,20 +57,20 @@ type DashboardFilterInput = {
 export class DashboardService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async home(query: DashboardHomeQuery = {}) {
+  async home(query: DashboardHomeQuery = {}, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const now = new Date();
     const filters = this.parseFilters(query);
     const period = this.resolvePeriod(query, now);
-    const linkWhere = this.buildLinkWhere(filters, period);
+    const linkWhere = tenantWhere(actor, this.buildLinkWhere(filters, period));
 
     const [contracts, activeLinks, pendingLinks, periodLinks, riskItems] =
       await Promise.all([
         this.prisma.contract.findMany({
-          where: {
+          where: tenantWhere(actor, {
             status: "ACTIVE",
-          },
+          }),
           orderBy: [{ startsAt: "desc" }, { id: "desc" }],
           include: {
             clientCompany: true,
@@ -96,7 +98,7 @@ export class DashboardService {
           include: dashboardLinkInclude,
         }),
         this.prisma.employmentLink.findMany({
-          where: {
+          where: tenantWhere(actor, {
             ...this.buildLinkWhere(filters, {
               ...period,
               start: period.metricStart,
@@ -105,16 +107,16 @@ export class DashboardService {
             status: {
               in: [EmploymentLinkStatus.ACTIVE, EmploymentLinkStatus.PENDING],
             },
-          },
+          }),
           take: 500,
           orderBy: [{ startsAt: "desc" }, { id: "desc" }],
           include: dashboardLinkInclude,
         }),
         this.prisma.occurrence.count({
-          where: {
+          where: tenantWhere(actor, {
             nature: OccurrenceNature.NEGATIVE,
             occurredAt: this.dateRangeWhere(period.start, period.end),
-          },
+          }),
         }),
       ]);
 

@@ -4,7 +4,9 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
+import { tenantCreateRelation, tenantWhere } from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateProviderCompanyDto } from './dto/create-provider-company.dto';
 import { UpdateProviderCompanyDto } from './dto/update-provider-company.dto';
 
@@ -26,13 +28,13 @@ type ProviderCompanyBase = Prisma.ProviderCompanyGetPayload<Record<string, never
 export class ProviderCompaniesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: PaginationQueryDto) {
+  async list(query: PaginationQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
     const search = query.search?.trim();
 
-    const where: Prisma.ProviderCompanyWhereInput | undefined = search
+    const searchWhere: Prisma.ProviderCompanyWhereInput | undefined = search
       ? {
           OR: [
             { legalName: { contains: search } },
@@ -41,6 +43,7 @@ export class ProviderCompaniesService {
           ]
         }
       : undefined;
+    const where = tenantWhere(actor, searchWhere);
 
     try {
       const [total, items] = await Promise.all([
@@ -71,12 +74,12 @@ export class ProviderCompaniesService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.prisma.providerCompany.findUnique({
-        where: { publicId }
+      const item = await this.prisma.providerCompany.findFirst({
+        where: tenantWhere(actor, { publicId })
       });
 
       if (!item) {
@@ -91,13 +94,14 @@ export class ProviderCompaniesService {
     }
   }
 
-  async create(dto: CreateProviderCompanyDto) {
+  async create(dto: CreateProviderCompanyDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
       const item = await this.prisma.providerCompany.create({
         data: {
           publicId: createPublicId('epr'),
+          tenantRootCompany: tenantCreateRelation(actor),
           legalName: dto.legalName,
           tradeName: dto.tradeName ?? null,
           document: dto.document,
@@ -115,12 +119,13 @@ export class ProviderCompaniesService {
     }
   }
 
-  async update(publicId: string, dto: UpdateProviderCompanyDto) {
+  async update(publicId: string, dto: UpdateProviderCompanyDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedProvider(publicId, actor);
       const item = await this.prisma.providerCompany.update({
-        where: { publicId },
+        where: { id: current.id },
         data: {
           legalName: dto.legalName?.trim(),
           tradeName:
@@ -144,12 +149,13 @@ export class ProviderCompaniesService {
     }
   }
 
-  async remove(publicId: string) {
+  async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
+      const current = await this.resolveScopedProvider(publicId, actor);
       const item = await this.prisma.providerCompany.update({
-        where: { publicId },
+        where: { id: current.id },
         data: { status: 'INACTIVE' }
       });
 
@@ -159,6 +165,22 @@ export class ProviderCompaniesService {
         notFound: 'Empresa prestadora nao encontrada.'
       });
     }
+  }
+
+  private async resolveScopedProvider(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    const item = await this.prisma.providerCompany.findFirst({
+      where: tenantWhere(actor, { publicId }),
+      select: { id: true }
+    });
+
+    if (!item) {
+      throw new NotFoundException('Empresa prestadora nao encontrada.');
+    }
+
+    return item;
   }
 
   private mapProviderCompany(

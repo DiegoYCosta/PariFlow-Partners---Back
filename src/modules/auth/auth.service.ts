@@ -8,7 +8,8 @@ import {
   AccessProfileCode,
   RefreshTokenStatus,
   SecurityEventType,
-  SensitiveAudienceGroup
+  SensitiveAudienceGroup,
+  UserSystemStatus
 } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes } from 'node:crypto';
@@ -367,7 +368,14 @@ export class AuthService {
     firebaseUid: string | null;
     name: string;
     email: string | null;
+    status: UserSystemStatus;
   }): Promise<SessionSnapshot> {
+    if (persistedUser.status !== UserSystemStatus.ACTIVE) {
+      throw new UnauthorizedException(
+        'Usuario interno ainda nao esta ativo para acessar o sistema.'
+      );
+    }
+
     const userWithTenant = await this.prisma.userSystem.findUnique({
       where: { id: persistedUser.id },
       include: {

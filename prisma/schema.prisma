@@ -179,6 +179,26 @@ enum ClientOnboardingVerificationChannel {
   NONE
 }
 
+enum ClientOnboardingVerificationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+enum NotificationOutboxChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELED
+}
+
 enum TenantRootCompanyStatus {
   PENDING_REVIEW
   PENDING_VERIFICATION
@@ -224,47 +244,110 @@ model TenantRootCompany {
   calendarEntries       CalendarEntry[]              @relation("CalendarEntryTenantRootCompany")
   securityEvents        SecurityEvent[]              @relation("SecurityEventTenantRootCompany")
   auditLogs             AuditLog[]                   @relation("AuditLogTenantRootCompany")
+  notificationOutbox    NotificationOutbox[]         @relation("NotificationOutboxTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
 }
 
+model ClientOnboardingCnpjRegistry {
+  id                     BigInt                                  @id @default(autoincrement())
+  publicId               String                                  @unique @db.VarChar(26)
+  cnpj                   String                                  @unique @db.VarChar(14)
+  status                 ClientOnboardingCnpjStatus
+  commercialContactName  String                                  @db.VarChar(160)
+  commercialContactEmail String?                                 @db.VarChar(180)
+  commercialContactPhone String?                                 @db.VarChar(30)
+  note                   String                                  @db.VarChar(255)
+  createdAt              DateTime                                @default(now())
+  updatedAt              DateTime                                @updatedAt
+  verificationChallenges ClientOnboardingVerificationChallenge[]
+
+  @@index([status])
+  @@map("cliente_onboarding_cnpj_registry")
+}
+
+model ClientOnboardingVerificationChallenge {
+  id                 BigInt                              @id @default(autoincrement())
+  publicId           String                              @unique @db.VarChar(26)
+  cnpjRegistryId     BigInt
+  channel            ClientOnboardingVerificationChannel
+  target             String                              @db.VarChar(180)
+  codeHash           String                              @db.VarChar(128)
+  status             ClientOnboardingVerificationStatus  @default(PENDING)
+  attempts           Int                                 @default(0)
+  maxAttempts        Int                                 @default(5)
+  expiresAt          DateTime
+  verifiedAt         DateTime?
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+  cnpjRegistry       ClientOnboardingCnpjRegistry        @relation(fields: [cnpjRegistryId], references: [id], onDelete: Cascade)
+  onboardingRequests ClientOnboardingRequest[]
+
+  @@index([cnpjRegistryId, status, expiresAt])
+  @@map("cliente_onboarding_verificacao")
+}
+
 model ClientOnboardingRequest {
-  id                          BigInt                              @id @default(autoincrement())
-  publicId                    String                              @unique @db.VarChar(26)
+  id                          BigInt                                 @id @default(autoincrement())
+  publicId                    String                                 @unique @db.VarChar(26)
   tenantRootCompanyId         BigInt?
-  cnpj                        String                              @db.VarChar(14)
-  tradeName                   String                              @db.VarChar(180)
-  legalName                   String                              @db.VarChar(180)
-  stateRegistration           String?                             @db.VarChar(40)
-  municipalRegistration       String?                             @db.VarChar(40)
-  companyType                 String                              @db.VarChar(80)
-  segment                     String                              @db.VarChar(180)
-  primaryCnae                 String?                             @db.VarChar(16)
-  companySize                 String                              @db.VarChar(50)
+  verificationChallengeId     BigInt?
+  cnpj                        String                                 @db.VarChar(14)
+  tradeName                   String                                 @db.VarChar(180)
+  legalName                   String                                 @db.VarChar(180)
+  stateRegistration           String?                                @db.VarChar(40)
+  municipalRegistration       String?                                @db.VarChar(40)
+  companyType                 String                                 @db.VarChar(80)
+  segment                     String                                 @db.VarChar(180)
+  primaryCnae                 String?                                @db.VarChar(16)
+  companySize                 String                                 @db.VarChar(50)
   cnpjStatus                  ClientOnboardingCnpjStatus
   contractType                ClientOnboardingContractType
-  status                      ClientOnboardingRequestStatus       @default(PENDING_VERIFICATION)
-  primaryContactName          String                              @db.VarChar(160)
-  primaryContactEmail         String?                             @db.VarChar(180)
-  primaryContactPhone         String?                             @db.VarChar(30)
+  status                      ClientOnboardingRequestStatus          @default(PENDING_VERIFICATION)
+  primaryContactName          String                                 @db.VarChar(160)
+  primaryContactEmail         String?                                @db.VarChar(180)
+  primaryContactPhone         String?                                @db.VarChar(30)
   accountQuotasJson           Json?
-  verificationAccepted        Boolean                             @default(false)
-  verificationChannel         ClientOnboardingVerificationChannel @default(NONE)
-  verificationTarget          String?                             @db.VarChar(180)
-  verificationMatchedRegistry Boolean                             @default(false)
-  reviewNotificationEmail     String?                             @db.VarChar(180)
-  submittedAt                 DateTime                            @default(now())
+  verificationAccepted        Boolean                                @default(false)
+  verificationChannel         ClientOnboardingVerificationChannel    @default(NONE)
+  verificationTarget          String?                                @db.VarChar(180)
+  verificationMatchedRegistry Boolean                                @default(false)
+  reviewNotificationEmail     String?                                @db.VarChar(180)
+  submittedAt                 DateTime                               @default(now())
   releasedAt                  DateTime?
   reviewedAt                  DateTime?
-  createdAt                   DateTime                            @default(now())
-  updatedAt                   DateTime                            @updatedAt
-  tenantRootCompany           TenantRootCompany?                  @relation("TenantRootCompanyOnboardingRequests", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  createdAt                   DateTime                               @default(now())
+  updatedAt                   DateTime                               @updatedAt
+  tenantRootCompany           TenantRootCompany?                     @relation("TenantRootCompanyOnboardingRequests", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  verificationChallenge       ClientOnboardingVerificationChallenge? @relation(fields: [verificationChallengeId], references: [id], onDelete: SetNull)
 
   @@index([cnpj, submittedAt])
   @@index([status, submittedAt])
   @@index([tenantRootCompanyId])
+  @@index([verificationChallengeId])
   @@map("cliente_onboarding_solicitacao")
+}
+
+model NotificationOutbox {
+  id                  BigInt                    @id @default(autoincrement())
+  publicId            String                    @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  channel             NotificationOutboxChannel
+  target              String                    @db.VarChar(180)
+  subject             String?                   @db.VarChar(180)
+  message             String                    @db.Text
+  status              NotificationOutboxStatus  @default(PENDING)
+  metadataJson        Json?
+  queuedAt            DateTime                  @default(now())
+  sentAt              DateTime?
+  failedAt            DateTime?
+  failureReason       String?                   @db.VarChar(255)
+  tenantRootCompany   TenantRootCompany?        @relation("NotificationOutboxTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([status, queuedAt])
+  @@index([tenantRootCompanyId, queuedAt])
+  @@map("notification_outbox")
 }
 
 model UserSystem {

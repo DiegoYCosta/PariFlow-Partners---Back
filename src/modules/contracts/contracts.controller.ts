@@ -8,12 +8,15 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FastifyRequest } from 'fastify';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InternalAuthGuard } from '../auth/guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from '../auth/guards/privileged-access.guard';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { ContractsService } from './contracts.service';
 import { CreateContractDocumentDto } from './dto/create-contract-document.dto';
 import { CreateContractModelDto } from './dto/create-contract-model.dto';
@@ -27,6 +30,10 @@ import { UpdateContractPositionDto } from './dto/update-contract-position.dto';
 import { UpdateContractServiceDto } from './dto/update-contract-service.dto';
 import { UpdateContractTypeDto } from './dto/update-contract-type.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
+
+type AuthenticatedRequest = FastifyRequest & {
+  user?: AuthTokenPayload;
+};
 
 @ApiTags('contratos')
 @ApiBearerAuth()
@@ -148,40 +155,44 @@ export class ContractsController {
   @ApiOperation({
     summary: 'Lista contratos com busca e paginacao.'
   })
-  list(@Query() query: PaginationQueryDto) {
-    return this.contractsService.list(query);
+  list(@Query() query: PaginationQueryDto, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.list(query, request.user!);
   }
 
   @Post()
   @ApiOperation({
     summary: 'Cria um novo contrato entre prestadora e cliente.'
   })
-  create(@Body() dto: CreateContractDto) {
-    return this.contractsService.create(dto);
+  create(@Body() dto: CreateContractDto, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.create(dto, request.user!);
   }
 
   @Patch(':publicId')
   @ApiOperation({
     summary: 'Atualiza dados principais de um contrato.'
   })
-  update(@Param('publicId') publicId: string, @Body() dto: UpdateContractDto) {
-    return this.contractsService.update(publicId, dto);
+  update(
+    @Param('publicId') publicId: string,
+    @Body() dto: UpdateContractDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.contractsService.update(publicId, dto, request.user!);
   }
 
   @Delete(':publicId')
   @ApiOperation({
     summary: 'Inativa logicamente um contrato preservando vinculos historicos.'
   })
-  remove(@Param('publicId') publicId: string) {
-    return this.contractsService.remove(publicId);
+  remove(@Param('publicId') publicId: string, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.remove(publicId, request.user!);
   }
 
   @Get(':publicId/postos')
   @ApiOperation({
     summary: 'Lista postos/vagas de um contrato.'
   })
-  listPositions(@Param('publicId') publicId: string) {
-    return this.contractsService.listPositions(publicId);
+  listPositions(@Param('publicId') publicId: string, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.listPositions(publicId, request.user!);
   }
 
   @Post(':publicId/postos')
@@ -190,9 +201,10 @@ export class ContractsController {
   })
   createPosition(
     @Param('publicId') publicId: string,
-    @Body() dto: CreateContractPositionDto
+    @Body() dto: CreateContractPositionDto,
+    @Req() request: AuthenticatedRequest
   ) {
-    return this.contractsService.createPosition(publicId, dto);
+    return this.contractsService.createPosition(publicId, dto, request.user!);
   }
 
   @Patch('postos/:positionPublicId')
@@ -201,25 +213,29 @@ export class ContractsController {
   })
   updatePosition(
     @Param('positionPublicId') positionPublicId: string,
-    @Body() dto: UpdateContractPositionDto
+    @Body() dto: UpdateContractPositionDto,
+    @Req() request: AuthenticatedRequest
   ) {
-    return this.contractsService.updatePosition(positionPublicId, dto);
+    return this.contractsService.updatePosition(positionPublicId, dto, request.user!);
   }
 
   @Delete('postos/:positionPublicId')
   @ApiOperation({
     summary: 'Inativa um posto/vaga preservando vinculos historicos.'
   })
-  removePosition(@Param('positionPublicId') positionPublicId: string) {
-    return this.contractsService.removePosition(positionPublicId);
+  removePosition(
+    @Param('positionPublicId') positionPublicId: string,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.contractsService.removePosition(positionPublicId, request.user!);
   }
 
   @Get(':publicId/documentos')
   @ApiOperation({
     summary: 'Lista documentos e links anexados ao contrato.'
   })
-  listDocuments(@Param('publicId') publicId: string) {
-    return this.contractsService.listDocuments(publicId);
+  listDocuments(@Param('publicId') publicId: string, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.listDocuments(publicId, request.user!);
   }
 
   @Post(':publicId/documentos')
@@ -228,9 +244,10 @@ export class ContractsController {
   })
   createDocument(
     @Param('publicId') publicId: string,
-    @Body() dto: CreateContractDocumentDto
+    @Body() dto: CreateContractDocumentDto,
+    @Req() request: AuthenticatedRequest
   ) {
-    return this.contractsService.createDocument(publicId, dto);
+    return this.contractsService.createDocument(publicId, dto, request.user!);
   }
 
   @Patch('documentos/:documentPublicId')
@@ -239,24 +256,28 @@ export class ContractsController {
   })
   updateDocument(
     @Param('documentPublicId') documentPublicId: string,
-    @Body() dto: UpdateContractDocumentDto
+    @Body() dto: UpdateContractDocumentDto,
+    @Req() request: AuthenticatedRequest
   ) {
-    return this.contractsService.updateDocument(documentPublicId, dto);
+    return this.contractsService.updateDocument(documentPublicId, dto, request.user!);
   }
 
   @Delete('documentos/:documentPublicId')
   @ApiOperation({
     summary: 'Remove logicamente documento ou link do contrato.'
   })
-  removeDocument(@Param('documentPublicId') documentPublicId: string) {
-    return this.contractsService.removeDocument(documentPublicId);
+  removeDocument(
+    @Param('documentPublicId') documentPublicId: string,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.contractsService.removeDocument(documentPublicId, request.user!);
   }
 
   @Get(':publicId')
   @ApiOperation({
     summary: 'Busca um contrato pelo identificador publico.'
   })
-  findOne(@Param('publicId') publicId: string) {
-    return this.contractsService.findOne(publicId);
+  findOne(@Param('publicId') publicId: string, @Req() request: AuthenticatedRequest) {
+    return this.contractsService.findOne(publicId, request.user!);
   }
 }

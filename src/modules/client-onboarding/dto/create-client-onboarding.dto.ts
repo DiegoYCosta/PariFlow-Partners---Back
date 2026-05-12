@@ -167,6 +167,20 @@ export class CreateClientOnboardingDto {
   @IsEnum(ClientOnboardingVerificationChannel)
   verificationChannel: ClientOnboardingVerificationChannel =
     ClientOnboardingVerificationChannel.NONE;
+
+  @ApiPropertyOptional({ example: 'ver_01hxyzabc123def456ghi789' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(26)
+  verificationChallengePublicId?: string;
+
+  @ApiPropertyOptional({ example: '123456' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @Matches(/^\d{6}$/)
+  verificationCode?: string;
 }
 
 function trimString({ value }: { value: unknown }) {
