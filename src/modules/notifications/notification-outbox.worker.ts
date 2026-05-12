@@ -12,6 +12,7 @@ import {
 import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { SmtpEmailSender } from './smtp-email.sender';
+import { WhatsAppCloudSender } from './whatsapp-cloud.sender';
 
 @Injectable()
 export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
@@ -19,10 +20,12 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private running = false;
   private missingSmtpLogged = false;
+  private missingWhatsAppLogged = false;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly smtpEmailSender: SmtpEmailSender
+    private readonly smtpEmailSender: SmtpEmailSender,
+    private readonly whatsAppCloudSender: WhatsAppCloudSender
   ) {}
 
   onModuleInit() {
@@ -52,20 +55,16 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       this.prisma.assertConfigured();
-      if (!this.smtpEmailSender.isConfigured()) {
-        if (!this.missingSmtpLogged) {
-          this.logger.warn(
-            'SMTP nao configurado; mensagens de e-mail permanecerao pendentes na outbox.'
-          );
-          this.missingSmtpLogged = true;
-        }
-        return;
-      }
 
       const now = new Date();
       const items = await this.prisma.notificationOutbox.findMany({
         where: {
-          channel: NotificationOutboxChannel.EMAIL,
+          channel: {
+            in: [
+              NotificationOutboxChannel.EMAIL,
+              NotificationOutboxChannel.WHATSAPP
+            ]
+          },
           status: NotificationOutboxStatus.PENDING,
           attempts: { lt: env.NOTIFICATION_OUTBOX_MAX_ATTEMPTS },
           OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }]
@@ -75,6 +74,9 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
       });
 
       for (const item of items) {
+        if (!this.canProcessChannel(item.channel)) {
+          continue;
+        }
         await this.processItem(item);
       }
     } catch (error) {
@@ -104,11 +106,7 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.smtpEmailSender.send({
-        to: item.target,
-        subject: item.subject,
-        text: item.message
-      });
+      await this.sendItem(item);
 
       await this.prisma.notificationOutbox.update({
         where: { id: item.id },
@@ -145,5 +143,56 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
 
   private errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  private canProcessChannel(channel: NotificationOutboxChannel) {
+    if (
+      channel === NotificationOutboxChannel.EMAIL &&
+      !this.smtpEmailSender.isConfigured()
+    ) {
+      if (!this.missingSmtpLogged) {
+        this.logger.warn(
+          'SMTP nao configurado; mensagens de e-mail permanecerao pendentes na outbox.'
+        );
+        this.missingSmtpLogged = true;
+      }
+      return false;
+    }
+
+    if (
+      channel === NotificationOutboxChannel.WHATSAPP &&
+      !this.whatsAppCloudSender.isConfigured()
+    ) {
+      if (!this.missingWhatsAppLogged) {
+        this.logger.warn(
+          'WhatsApp Cloud API nao configurada; mensagens WhatsApp permanecerao pendentes na outbox.'
+        );
+        this.missingWhatsAppLogged = true;
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  private async sendItem(item: NotificationOutbox) {
+    if (item.channel === NotificationOutboxChannel.EMAIL) {
+      await this.smtpEmailSender.send({
+        to: item.target,
+        subject: item.subject,
+        text: item.message
+      });
+      return;
+    }
+
+    if (item.channel === NotificationOutboxChannel.WHATSAPP) {
+      await this.whatsAppCloudSender.send({
+        to: item.target,
+        text: item.message
+      });
+      return;
+    }
+
+    throw new Error(`Canal de notificacao sem sender: ${item.channel}`);
   }
 }

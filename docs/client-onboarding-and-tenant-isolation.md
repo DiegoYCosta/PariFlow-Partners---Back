@@ -31,19 +31,19 @@ Rotas internas autenticadas:
 - CNPJ `IN_USE` ou `UNAVAILABLE`: gera solicitacao indisponivel e nao cria
   empresa raiz.
 - Se a verificacao em duas etapas for aceita, o usuario precisa pedir um codigo
-  por e-mail/telefone previamente vinculado ao CNPJ e enviar o codigo de 6
-  digitos antes do vencimento.
+  por e-mail, telefone ou WhatsApp previamente vinculado ao CNPJ e enviar o
+  codigo de 6 digitos antes do vencimento.
 - Se o codigo expirar, falhar ou nao for enviado, a
   solicitacao fica `PENDING_REVIEW` e registra
   `reviewNotificationEmail=diego.c94@yahoo.com`.
 - A liberacao imediata cria a empresa raiz, trava exclusao, ativa o primeiro
   usuario administrador com MFA sugerido e grava trilha de auditoria.
 
-O envio de e-mail ja usa `notification_outbox` com worker SMTP. Quando
-`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM` estiverem configurados,
-o worker processa mensagens `EMAIL`, marca como `SENT` em sucesso e como
-`FAILED` apos o limite de tentativas. SMS/WhatsApp continuam reservados para
-adapters futuros.
+O envio de e-mail ja usa `notification_outbox` com worker SMTP. WhatsApp usa o
+mesmo worker com adapter Meta Cloud API quando `WHATSAPP_PHONE_NUMBER_ID` e
+`WHATSAPP_ACCESS_TOKEN` estiverem configurados. O worker marca mensagens como
+`SENT` em sucesso e como `FAILED` apos o limite de tentativas. SMS continua
+reservado para adapter futuro.
 
 ## Dados salvos
 
@@ -98,7 +98,7 @@ excecao sem tenant, apenas fora de producao.
 
 ## Proximas entregas relacionadas
 
-1. Adapters reais de SMS/WhatsApp a partir de `notification_outbox`.
+1. Adapter real de SMS a partir de `notification_outbox`.
 2. Administracao completa do registry comercial de CNPJs.
 3. Vinculo assistido do primeiro usuario Firebase ao usuario interno criado.
 4. Captcha/WAF em producao para o formulario publico.

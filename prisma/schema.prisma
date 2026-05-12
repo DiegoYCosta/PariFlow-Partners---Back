@@ -176,6 +176,7 @@ enum ClientOnboardingRequestStatus {
 enum ClientOnboardingVerificationChannel {
   EMAIL
   PHONE
+  WHATSAPP
   NONE
 }
 

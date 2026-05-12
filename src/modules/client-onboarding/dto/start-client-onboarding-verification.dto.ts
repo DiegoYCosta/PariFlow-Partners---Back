@@ -12,7 +12,13 @@ export class StartClientOnboardingVerificationDto {
   @Matches(/^\d{14}$/)
   cnpj!: string;
 
-  @ApiProperty({ enum: [ClientOnboardingVerificationChannel.EMAIL, ClientOnboardingVerificationChannel.PHONE] })
+  @ApiProperty({
+    enum: [
+      ClientOnboardingVerificationChannel.EMAIL,
+      ClientOnboardingVerificationChannel.PHONE,
+      ClientOnboardingVerificationChannel.WHATSAPP
+    ]
+  })
   @IsEnum(ClientOnboardingVerificationChannel)
   channel!: ClientOnboardingVerificationChannel;
 

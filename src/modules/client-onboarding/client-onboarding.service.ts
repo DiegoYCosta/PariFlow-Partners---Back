@@ -72,6 +72,10 @@ export class ClientOnboardingService {
         {
           value: ClientOnboardingVerificationChannel.PHONE,
           label: 'Telefone cadastrado'
+        },
+        {
+          value: ClientOnboardingVerificationChannel.WHATSAPP,
+          label: 'WhatsApp cadastrado'
         }
       ],
       reviewEmail: CLIENT_ONBOARDING_REVIEW_EMAIL
@@ -124,10 +128,7 @@ export class ClientOnboardingService {
     await this.prisma.notificationOutbox.create({
       data: {
         publicId: createPublicId('not'),
-        channel:
-          channel === ClientOnboardingVerificationChannel.EMAIL
-            ? NotificationOutboxChannel.EMAIL
-            : NotificationOutboxChannel.SMS,
+        channel: this.notificationChannelForVerification(channel),
         target,
         subject: 'Codigo de verificacao PariFlow Partners',
         message: `Codigo de verificacao PariFlow Partners: ${code}. Ele expira em 10 minutos.`,
@@ -875,6 +876,20 @@ export class ClientOnboardingService {
     return channel === ClientOnboardingVerificationChannel.EMAIL
       ? normalizeEmail(target)
       : normalizePhone(target);
+  }
+
+  private notificationChannelForVerification(
+    channel: ClientOnboardingVerificationChannel
+  ) {
+    switch (channel) {
+      case ClientOnboardingVerificationChannel.EMAIL:
+        return NotificationOutboxChannel.EMAIL;
+      case ClientOnboardingVerificationChannel.WHATSAPP:
+        return NotificationOutboxChannel.WHATSAPP;
+      case ClientOnboardingVerificationChannel.PHONE:
+      default:
+        return NotificationOutboxChannel.SMS;
+    }
   }
 
   private targetMatchesRegistry(
