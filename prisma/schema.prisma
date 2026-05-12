@@ -256,6 +256,7 @@ model TenantRootCompany {
   auditLogs             AuditLog[]                   @relation("AuditLogTenantRootCompany")
   notificationOutbox    NotificationOutbox[]         @relation("NotificationOutboxTenantRootCompany")
   nonBusinessDays       CalendarNonBusinessDay[]     @relation("CalendarNonBusinessDayTenantRootCompany")
+  timelineRecords       TimelineRecord[]             @relation("TimelineRecordTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
@@ -846,6 +847,47 @@ model DocumentReceipt {
   occurrence   Occurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
 
   @@map("recebimento_documento")
+}
+
+model TimelineRecord {
+  id                         BigInt               @id @default(autoincrement())
+  publicId                   String               @unique @db.VarChar(26)
+  tenantRootCompanyId        BigInt?
+  title                      String               @db.VarChar(180)
+  description                String               @db.Text
+  category                   String               @db.VarChar(80)
+  nature                     OccurrenceNature     @default(NEUTRAL)
+  referenceMonth             DateTime
+  eventDate                  DateTime?
+  visibility                 OccurrenceVisibility @default(INTERNAL)
+  status                     String               @default("ACTIVE") @db.VarChar(30)
+  createdByUserSystemPublicId String?             @db.VarChar(26)
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+  tenantRootCompany          TenantRootCompany?   @relation("TimelineRecordTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  links                      TimelineRecordLink[]
+
+  @@index([tenantRootCompanyId, referenceMonth])
+  @@index([tenantRootCompanyId, eventDate])
+  @@index([tenantRootCompanyId, category])
+  @@index([tenantRootCompanyId, status])
+  @@map("timeline_record")
+}
+
+model TimelineRecordLink {
+  id             BigInt         @id @default(autoincrement())
+  publicId       String         @unique @db.VarChar(26)
+  recordId       BigInt
+  entityType     String         @db.VarChar(60)
+  entityPublicId String?        @db.VarChar(26)
+  labelSnapshot  String         @db.VarChar(180)
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now())
+  record         TimelineRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([entityType, entityPublicId])
+  @@map("timeline_record_link")
 }
 
 model CalendarEntry {
