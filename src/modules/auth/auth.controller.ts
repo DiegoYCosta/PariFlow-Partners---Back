@@ -18,7 +18,9 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { buildRefreshCookieOptions } from '../../common/utils/cookie-options';
 import { RefreshSessionDto } from './dto/refresh-session.dto';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
+import { StartSensitiveSessionDto } from './dto/start-sensitive-session.dto';
 import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
+import { VerifySensitiveSessionDto } from './dto/verify-sensitive-session.dto';
 import { InternalAuthGuard } from './guards/internal-auth.guard';
 import { PrivilegedAccessGuard } from './guards/privileged-access.guard';
 import { AuthTokenPayload } from './interfaces/auth-token-payload.interface';
@@ -133,8 +135,18 @@ export class AuthController {
   @ApiOperation({
     summary: 'Inicia o fluxo de step-up para area sensivel.'
   })
-  async startSensitiveSession() {
-    return this.authService.startSensitiveSession();
+  async startSensitiveSession(
+    @Body() dto: StartSensitiveSessionDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.authService.startSensitiveSession(dto, request.user!, {
+      forwardedFor: request.headers['x-forwarded-for'],
+      forwardedHost: request.headers['x-forwarded-host'],
+      host: request.headers.host,
+      origin: request.headers.origin,
+      remoteAddress: request.ip,
+      userAgent: request.headers['user-agent']
+    });
   }
 
   @Post('sensitive-session/verify')
@@ -143,8 +155,18 @@ export class AuthController {
   @ApiOperation({
     summary: 'Valida MFA ou fator adicional de sessao sensivel.'
   })
-  async verifySensitiveSession() {
-    return this.authService.verifySensitiveSession();
+  async verifySensitiveSession(
+    @Body() dto: VerifySensitiveSessionDto,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.authService.verifySensitiveSession(dto, request.user!, {
+      forwardedFor: request.headers['x-forwarded-for'],
+      forwardedHost: request.headers['x-forwarded-host'],
+      host: request.headers.host,
+      origin: request.headers.origin,
+      remoteAddress: request.ip,
+      userAgent: request.headers['user-agent']
+    });
   }
 
   private applyRefreshCookie(reply: FastifyReply, refreshToken?: string) {

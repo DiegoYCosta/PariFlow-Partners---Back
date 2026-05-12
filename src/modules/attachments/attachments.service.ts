@@ -1,9 +1,13 @@
 import {
-  Attachment,
+  AttachmentClassification,
   AttachmentStatus,
   Prisma,
-  SensitiveAudienceGroup
+  SensitiveAudienceGroup,
+  SensitiveSessionLevel,
+  SensitiveSessionStatus
 } from '@prisma/client';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   BadRequestException,
   ForbiddenException,
@@ -16,6 +20,7 @@ import { createPublicId } from '../../common/utils/public-id';
 import { assertPublicSubmissionAllowed } from '../../common/utils/public-submission';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { tenantWhere } from '../../common/tenant/tenant-scope';
+import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateAttachmentSubmissionDto } from './dto/create-attachment-submission.dto';
@@ -41,8 +46,17 @@ type TargetReference = {
   tenantRootCompanyId: bigint | null;
 };
 
+type AttachmentAccessDisposition = 'view' | 'download';
+
+type AttachmentAccessContext = {
+  ipAddress?: string;
+  userAgent?: string;
+};
+
 @Injectable()
 export class AttachmentsService {
+  private readonly s3Client = new S3Client({ region: env.AWS_REGION });
+
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async createSubmission(
@@ -303,6 +317,54 @@ export class AttachmentsService {
     }
   }
 
+  async createAccess(
+    publicId: string,
+    disposition: AttachmentAccessDisposition,
+    actor: AuthTokenPayload,
+    context: AttachmentAccessContext = {}
+  ) {
+    this.prisma.assertConfigured();
+
+    const item = await this.ensureActiveAttachmentWithRelations(publicId, actor);
+    if (!this.canReadAttachment(item, actor)) {
+      throw new ForbiddenException('Usuario sem acesso ao anexo protegido.');
+    }
+
+    if (this.requiresSensitiveSession(item)) {
+      await this.assertVerifiedSensitiveSession(actor, SensitiveSessionLevel.SENSITIVE);
+    }
+
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const object = this.resolvePrivateObject(item.storagePath);
+    const signedUrl = object
+      ? await getSignedUrl(
+          this.s3Client,
+          new GetObjectCommand({
+            Bucket: object.bucket,
+            Key: object.key,
+            ResponseContentDisposition:
+              disposition === 'download'
+                ? `attachment; filename="${safeDownloadName(item.fileName)}"`
+                : `inline; filename="${safeDownloadName(item.fileName)}"`
+          }),
+          { expiresIn: 5 * 60 }
+        )
+      : item.externalLink;
+
+    await this.recordAttachmentAudit(item, actor, disposition, context);
+
+    return {
+      publicId: item.publicId,
+      fileName: item.fileName,
+      mimeType: item.mimeType,
+      disposition,
+      source: object ? 'S3_PRIVATE' : item.externalLink ? 'EXTERNAL_LINK' : 'METADATA_ONLY',
+      signedUrl: signedUrl ?? null,
+      expiresAt,
+      requiresSensitiveSession: this.requiresSensitiveSession(item)
+    };
+  }
+
   private async buildListTargetWhere(
     query: ListAttachmentsQueryDto,
     actor: AuthTokenPayload
@@ -463,6 +525,40 @@ export class AttachmentsService {
     return user.id;
   }
 
+  private async assertVerifiedSensitiveSession(
+    actor: AuthTokenPayload,
+    minimumLevel: SensitiveSessionLevel
+  ) {
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: actor.sub },
+      select: { id: true }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuario autenticado nao encontrado.');
+    }
+
+    const allowedLevels =
+      minimumLevel === SensitiveSessionLevel.CRITICAL
+        ? [SensitiveSessionLevel.CRITICAL]
+        : [SensitiveSessionLevel.SENSITIVE, SensitiveSessionLevel.CRITICAL];
+    const session = await this.prisma.sensitiveSession.findFirst({
+      where: {
+        userSystemId: user.id,
+        status: SensitiveSessionStatus.VERIFIED,
+        level: { in: allowedLevels },
+        expiresAt: { gt: new Date() }
+      },
+      orderBy: { expiresAt: 'desc' }
+    });
+
+    if (!session) {
+      throw new ForbiddenException(
+        'Sessao sensivel verificada e obrigatoria para acessar este anexo.'
+      );
+    }
+  }
+
   private async resolveAudienceUserIds(
     userPublicIds?: string[],
     actor?: AuthTokenPayload
@@ -556,6 +652,67 @@ export class AttachmentsService {
     return actor.securityContext !== 'authenticated';
   }
 
+  private requiresSensitiveSession(item: AttachmentWithRelations): boolean {
+    return (
+      item.classification === AttachmentClassification.SENSITIVE_ATTACHMENT ||
+      item.requiresConfirmation
+    );
+  }
+
+  private resolvePrivateObject(storagePath?: string | null):
+    | { bucket: string; key: string }
+    | undefined {
+    const value = storagePath?.trim();
+    if (!value) {
+      return undefined;
+    }
+
+    if (value.startsWith('s3://')) {
+      const withoutScheme = value.slice('s3://'.length);
+      const slashIndex = withoutScheme.indexOf('/');
+      if (slashIndex > 0) {
+        return {
+          bucket: withoutScheme.slice(0, slashIndex),
+          key: withoutScheme.slice(slashIndex + 1)
+        };
+      }
+    }
+
+    if (!env.S3_BUCKET_PRIVATE) {
+      return undefined;
+    }
+
+    return {
+      bucket: env.S3_BUCKET_PRIVATE,
+      key: value.replace(/^\/+/, '')
+    };
+  }
+
+  private async recordAttachmentAudit(
+    item: AttachmentWithRelations,
+    actor: AuthTokenPayload,
+    disposition: AttachmentAccessDisposition,
+    context: AttachmentAccessContext
+  ) {
+    const userSystemId = await this.resolveAuthenticatedUserId(actor.sub);
+    await this.prisma.auditLog.create({
+      data: {
+        publicId: createPublicId('aud'),
+        tenantRootCompanyId: item.tenantRootCompanyId,
+        userSystemId,
+        entityName: 'Attachment',
+        entityPublicId: item.publicId,
+        action:
+          disposition === 'download'
+            ? 'ATTACHMENT_DOWNLOADED'
+            : 'ATTACHMENT_VIEWED',
+        description: `${disposition === 'download' ? 'Download' : 'Visualizacao'} auditavel do anexo ${item.fileName}.`,
+        ipAddress: truncateForColumn(context.ipAddress, 64),
+        device: truncateForColumn(context.userAgent, 255)
+      }
+    });
+  }
+
   private mapAttachment(item: AttachmentWithRelations, actor?: AuthTokenPayload) {
     const canView = actor ? this.canReadAttachment(item, actor) : false;
     const canManage = actor ? this.canManageAttachment(item, actor) : false;
@@ -611,4 +768,19 @@ export class AttachmentsService {
       }
     } satisfies Prisma.AttachmentInclude;
   }
+}
+
+function safeDownloadName(value: string): string {
+  return value.replace(/["\r\n]/g, '').trim() || 'anexo';
+}
+
+function truncateForColumn(
+  value: string | undefined,
+  maxLength: number
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
 }

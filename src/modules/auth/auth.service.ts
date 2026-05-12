@@ -1,25 +1,29 @@
 import {
   Injectable,
   Inject,
-  NotImplementedException,
   UnauthorizedException
 } from '@nestjs/common';
 import {
   AccessProfileCode,
+  NotificationOutboxChannel,
   Prisma,
   RefreshTokenStatus,
   SecurityEventType,
   SensitiveAudienceGroup,
+  SensitiveSessionLevel,
+  SensitiveSessionStatus,
   UserSystemStatus
 } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { createPublicId } from '../../common/utils/public-id';
 import { databaseUrl, env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { FirebaseAdminService } from '../../infra/firebase/firebase-admin.service';
 import { SessionExchangeDto } from './dto/session-exchange.dto';
+import { StartSensitiveSessionDto } from './dto/start-sensitive-session.dto';
 import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
+import { VerifySensitiveSessionDto } from './dto/verify-sensitive-session.dto';
 import {
   AuthCapabilities,
   AuthTenantContext,
@@ -231,18 +235,168 @@ export class AuthService {
     return { loggedOut: true };
   }
 
-  async startSensitiveSession() {
-    // A documentacao preve step-up para anexos, downloads e relatorios criticos.
-    // Esse fluxo sera ligado as tabelas sensitive_sessions e security_events.
-    throw new NotImplementedException(
-      'Sessao sensivel ainda nao foi habilitada.'
+  async startSensitiveSession(
+    dto: StartSensitiveSessionDto,
+    payload: AuthTokenPayload,
+    requestContext?: SessionRequestContext
+  ) {
+    this.prisma.assertConfigured();
+
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: payload.sub },
+      select: {
+        id: true,
+        publicId: true,
+        email: true,
+        tenantRootCompanyId: true
+      }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'Usuario autenticado nao foi encontrado para sessao sensivel.'
+      );
+    }
+
+    const code = randomInt(100000, 1000000).toString();
+    const publicId = createPublicId('sen');
+    const expiresAt = new Date(
+      Date.now() + env.SENSITIVE_SESSION_TTL_MINUTES * 60 * 1000
     );
+    const level = dto.level ?? SensitiveSessionLevel.SENSITIVE;
+
+    const session = await this.prisma.sensitiveSession.create({
+      data: {
+        publicId,
+        userSystemId: user.id,
+        level,
+        status: SensitiveSessionStatus.PENDING,
+        justification: dto.justification,
+        challengeHash: hashSensitiveSessionCode(publicId, user.id, code),
+        expiresAt,
+        ipAddress: this.resolveClientIp(requestContext),
+        userAgent: truncateForColumn(requestContext?.userAgent, 255)
+      }
+    });
+
+    await this.prisma.notificationOutbox.create({
+      data: {
+        publicId: createPublicId('not'),
+        tenantRootCompanyId: user.tenantRootCompanyId,
+        channel: NotificationOutboxChannel.EMAIL,
+        target: user.email,
+        subject: 'Codigo de sessao sensivel PariFlow Partners',
+        message: `Seu codigo de acesso sensivel e ${code}. Ele expira em ${env.SENSITIVE_SESSION_TTL_MINUTES} minutos.`,
+        metadataJson: {
+          source: 'sensitive_session',
+          sensitiveSessionPublicId: publicId,
+          level
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    await this.recordSecurityEvent(
+      user.id,
+      SecurityEventType.SENSITIVE_SESSION_STARTED,
+      `Sessao sensivel solicitada (${level}).`,
+      requestContext,
+      user.tenantRootCompanyId
+    );
+
+    return {
+      publicId: session.publicId,
+      level: session.level,
+      status: session.status,
+      expiresAt: session.expiresAt,
+      delivery: {
+        channel: 'EMAIL',
+        targetMasked: maskEmail(user.email)
+      },
+      ...(env.NODE_ENV !== 'production' ? { devCode: code } : {})
+    };
   }
 
-  async verifySensitiveSession() {
-    throw new NotImplementedException(
-      'Verificacao de sessao sensivel ainda nao foi habilitada.'
+  async verifySensitiveSession(
+    dto: VerifySensitiveSessionDto,
+    payload: AuthTokenPayload,
+    requestContext?: SessionRequestContext
+  ) {
+    this.prisma.assertConfigured();
+
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: payload.sub },
+      select: { id: true, tenantRootCompanyId: true }
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'Usuario autenticado nao foi encontrado para validar sessao sensivel.'
+      );
+    }
+
+    const session = await this.prisma.sensitiveSession.findFirst({
+      where: {
+        publicId: dto.publicId,
+        userSystemId: user.id,
+        status: SensitiveSessionStatus.PENDING
+      }
+    });
+
+    if (!session) {
+      throw new UnauthorizedException('Sessao sensivel invalida ou ja usada.');
+    }
+
+    if (session.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.sensitiveSession.update({
+        where: { id: session.id },
+        data: { status: SensitiveSessionStatus.EXPIRED }
+      });
+      throw new UnauthorizedException('Codigo de sessao sensivel expirado.');
+    }
+
+    const expectedHash = hashSensitiveSessionCode(
+      session.publicId,
+      user.id,
+      dto.code
     );
+
+    if (session.challengeHash !== expectedHash) {
+      await this.prisma.sensitiveSession.update({
+        where: { id: session.id },
+        data: {
+          attemptCount: { increment: 1 },
+          ...(session.attemptCount >= 4
+            ? { status: SensitiveSessionStatus.REVOKED }
+            : {})
+        }
+      });
+      throw new UnauthorizedException('Codigo de sessao sensivel invalido.');
+    }
+
+    const verified = await this.prisma.sensitiveSession.update({
+      where: { id: session.id },
+      data: {
+        status: SensitiveSessionStatus.VERIFIED,
+        verifiedAt: new Date(),
+        challengeHash: null
+      }
+    });
+
+    await this.recordSecurityEvent(
+      user.id,
+      SecurityEventType.SENSITIVE_SESSION_VERIFIED,
+      `Sessao sensivel verificada (${verified.level}).`,
+      requestContext,
+      user.tenantRootCompanyId
+    );
+
+    return {
+      publicId: verified.publicId,
+      level: verified.level,
+      status: verified.status,
+      verifiedAt: verified.verifiedAt,
+      expiresAt: verified.expiresAt
+    };
   }
 
   private async resolveSessionIdentity(
@@ -520,7 +674,8 @@ export class AuthService {
     userSystemId: bigint | undefined,
     eventType: SecurityEventType,
     description: string,
-    requestContext?: SessionRequestContext
+    requestContext?: SessionRequestContext,
+    tenantRootCompanyId?: bigint | null
   ) {
     if (!databaseUrl || !userSystemId) {
       return;
@@ -530,6 +685,7 @@ export class AuthService {
       await this.prisma.securityEvent.create({
         data: {
           publicId: createPublicId('sev'),
+          tenantRootCompanyId,
           userSystemId,
           eventType,
           description,
@@ -723,6 +879,26 @@ function createRefreshTokenValue(): string {
 
 function hashRefreshToken(refreshToken: string): string {
   return createHash('sha256').update(refreshToken).digest('hex');
+}
+
+function hashSensitiveSessionCode(
+  sessionPublicId: string,
+  userSystemId: bigint,
+  code: string
+): string {
+  return createHash('sha256')
+    .update(`${sessionPublicId}:${userSystemId}:${code}`)
+    .digest('hex');
+}
+
+function maskEmail(value: string): string {
+  const [name, domain] = value.split('@');
+  if (!name || !domain) {
+    return 'email cadastrado';
+  }
+
+  const prefix = name.slice(0, 2);
+  return `${prefix}${'*'.repeat(Math.max(2, name.length - 2))}@${domain}`;
 }
 
 function hostnameFromHeaderValue(value: string): string | null {

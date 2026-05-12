@@ -99,6 +99,13 @@ enum SensitiveSessionLevel {
   CRITICAL
 }
 
+enum SensitiveSessionStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  REVOKED
+}
+
 enum SecurityEventType {
   LOGIN_SUCCESS
   LOGIN_FAILURE
@@ -954,13 +961,18 @@ model SensitiveSession {
   publicId      String                @unique @db.VarChar(26)
   userSystemId  BigInt
   level         SensitiveSessionLevel
+  status        SensitiveSessionStatus @default(PENDING)
   justification String?               @db.Text
-  verifiedAt    DateTime
+  challengeHash String?               @db.VarChar(128)
+  attemptCount  Int                   @default(0)
+  requestedAt   DateTime              @default(now())
+  verifiedAt    DateTime?
   expiresAt     DateTime
   ipAddress     String?               @db.VarChar(64)
   userAgent     String?               @db.VarChar(255)
   userSystem    UserSystem            @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
 
+  @@index([userSystemId, status, expiresAt])
   @@map("sensitive_sessions")
 }
 
