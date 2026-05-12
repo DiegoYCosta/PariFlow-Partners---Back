@@ -15,6 +15,7 @@ import {
 import { createPublicId } from '../../common/utils/public-id';
 import { assertPublicSubmissionAllowed } from '../../common/utils/public-submission';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
+import { tenantWhere } from '../../common/tenant/tenant-scope';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateAttachmentSubmissionDto } from './dto/create-attachment-submission.dto';
@@ -35,6 +36,11 @@ type AttachmentWithRelations = Prisma.AttachmentGetPayload<{
   };
 }>;
 
+type TargetReference = {
+  id: bigint;
+  tenantRootCompanyId: bigint | null;
+};
+
 @Injectable()
 export class AttachmentsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -46,8 +52,8 @@ export class AttachmentsService {
     assertPublicSubmissionAllowed(publicSubmissionToken);
     this.prisma.assertConfigured();
 
-    const [occurrenceId, ownerUserId, allowedUserIds] = await Promise.all([
-      this.resolveOccurrenceId(dto.occurrencePublicId),
+    const [occurrence, ownerUserId, allowedUserIds] = await Promise.all([
+      this.resolveOccurrenceReference(dto.occurrencePublicId),
       this.resolveOwnerUserId(dto.ownerUserPublicId),
       this.resolveAudienceUserIds(dto.allowedUserPublicIds)
     ]);
@@ -56,7 +62,8 @@ export class AttachmentsService {
       const item = await this.prisma.attachment.create({
         data: {
           publicId: createPublicId('anx'),
-          occurrenceId,
+          tenantRootCompanyId: occurrence.tenantRootCompanyId ?? undefined,
+          occurrenceId: occurrence.id,
           ownerUserSystemId: ownerUserId,
           displayScope: dto.displayScope,
           classification: dto.classification,
@@ -97,19 +104,20 @@ export class AttachmentsService {
   ) {
     this.prisma.assertConfigured();
 
-    const [occurrenceId, actorUserId, ownerUserId, allowedUserIds] =
+    const [occurrence, actorUserId, ownerUserId, allowedUserIds] =
       await Promise.all([
-        this.resolveOccurrenceId(dto.occurrencePublicId),
+        this.resolveOccurrenceReference(dto.occurrencePublicId, actor),
         this.resolveAuthenticatedUserId(actor.sub),
-        this.resolveOwnerUserId(dto.ownerUserPublicId),
-        this.resolveAudienceUserIds(dto.allowedUserPublicIds)
+        this.resolveOwnerUserId(dto.ownerUserPublicId, actor),
+        this.resolveAudienceUserIds(dto.allowedUserPublicIds, actor)
       ]);
 
     try {
       const item = await this.prisma.attachment.create({
         data: {
           publicId: createPublicId('anx'),
-          occurrenceId,
+          tenantRootCompanyId: occurrence.tenantRootCompanyId ?? undefined,
+          occurrenceId: occurrence.id,
           ownerUserSystemId: ownerUserId,
           createdByUserSystemId: actorUserId,
           displayScope: dto.displayScope,
@@ -148,16 +156,16 @@ export class AttachmentsService {
   async list(query: ListAttachmentsQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const targetWhere = await this.buildListTargetWhere(query);
+    const targetWhere = await this.buildListTargetWhere(query, actor);
 
     try {
       const items = await this.prisma.attachment.findMany({
-        where: {
+        where: tenantWhere(actor, {
           ...targetWhere,
           status: AttachmentStatus.ACTIVE,
           classification: query.classification,
           AND: [this.buildVisibilityWhere(actor)]
-        },
+        }),
         orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
         include: this.attachmentInclude
       });
@@ -175,11 +183,11 @@ export class AttachmentsService {
 
     try {
       const item = await this.prisma.attachment.findFirst({
-        where: {
+        where: tenantWhere(actor, {
           publicId,
           status: AttachmentStatus.ACTIVE,
           AND: [this.buildVisibilityWhere(actor)]
-        },
+        }),
         include: this.attachmentInclude
       });
 
@@ -202,7 +210,7 @@ export class AttachmentsService {
   ) {
     this.prisma.assertConfigured();
 
-    const item = await this.ensureActiveAttachmentWithRelations(publicId);
+    const item = await this.ensureActiveAttachmentWithRelations(publicId, actor);
 
     if (!this.canManageAttachment(item, actor)) {
       throw new ForbiddenException(
@@ -212,16 +220,16 @@ export class AttachmentsService {
 
     const [ownerUserId, allowedUserIds] = await Promise.all([
       dto.ownerUserPublicId
-        ? this.resolveOwnerUserId(dto.ownerUserPublicId)
+        ? this.resolveOwnerUserId(dto.ownerUserPublicId, actor)
         : Promise.resolve<bigint | undefined>(undefined),
       dto.allowedUserPublicIds
-        ? this.resolveAudienceUserIds(dto.allowedUserPublicIds)
+        ? this.resolveAudienceUserIds(dto.allowedUserPublicIds, actor)
         : Promise.resolve<bigint[] | undefined>(undefined)
     ]);
 
     try {
       const updated = await this.prisma.attachment.update({
-        where: { publicId },
+        where: { id: item.id },
         data: {
           ownerUserSystemId: ownerUserId,
           displayScope: dto.displayScope,
@@ -265,7 +273,7 @@ export class AttachmentsService {
   async remove(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
-    const item = await this.ensureActiveAttachmentWithRelations(publicId);
+    const item = await this.ensureActiveAttachmentWithRelations(publicId, actor);
 
     if (!this.canManageAttachment(item, actor)) {
       throw new ForbiddenException(
@@ -275,7 +283,7 @@ export class AttachmentsService {
 
     try {
       const removed = await this.prisma.attachment.update({
-        where: { publicId },
+        where: { id: item.id },
         data: {
           status: AttachmentStatus.DELETED,
           deletedAt: new Date()
@@ -296,7 +304,8 @@ export class AttachmentsService {
   }
 
   private async buildListTargetWhere(
-    query: ListAttachmentsQueryDto
+    query: ListAttachmentsQueryDto,
+    actor: AuthTokenPayload
   ): Promise<Prisma.AttachmentWhereInput> {
     if (!query.occurrencePublicId && !query.personPublicId) {
       throw new BadRequestException(
@@ -307,36 +316,44 @@ export class AttachmentsService {
     const where: Prisma.AttachmentWhereInput = {};
 
     if (query.occurrencePublicId) {
-      where.occurrenceId = await this.resolveOccurrenceId(
-        query.occurrencePublicId
+      const occurrence = await this.resolveOccurrenceReference(
+        query.occurrencePublicId,
+        actor
       );
+      where.occurrenceId = occurrence.id;
     }
 
     if (query.personPublicId) {
       where.occurrence = {
-        personId: await this.resolvePersonId(query.personPublicId)
+        personId: await this.resolvePersonId(query.personPublicId, actor)
       };
     }
 
     return where;
   }
 
-  private async resolveOccurrenceId(publicId: string): Promise<bigint> {
-    const occurrence = await this.prisma.occurrence.findUnique({
-      where: { publicId },
-      select: { id: true }
+  private async resolveOccurrenceReference(
+    publicId: string,
+    actor?: AuthTokenPayload
+  ): Promise<TargetReference> {
+    const occurrence = await this.prisma.occurrence.findFirst({
+      where: actor ? tenantWhere(actor, { publicId }) : { publicId },
+      select: { id: true, tenantRootCompanyId: true }
     });
 
     if (!occurrence) {
       throw new NotFoundException('Ocorrencia alvo do anexo nao foi encontrada.');
     }
 
-    return occurrence.id;
+    return occurrence;
   }
 
-  private async resolvePersonId(publicId: string): Promise<bigint> {
-    const person = await this.prisma.person.findUnique({
-      where: { publicId },
+  private async resolvePersonId(
+    publicId: string,
+    actor: AuthTokenPayload
+  ): Promise<bigint> {
+    const person = await this.prisma.person.findFirst({
+      where: tenantWhere(actor, { publicId }),
       select: { id: true }
     });
 
@@ -348,13 +365,14 @@ export class AttachmentsService {
   }
 
   private async ensureActiveAttachmentWithRelations(
-    publicId: string
+    publicId: string,
+    actor: AuthTokenPayload
   ): Promise<AttachmentWithRelations> {
     const item = await this.prisma.attachment.findFirst({
-      where: {
+      where: tenantWhere(actor, {
         publicId,
         status: AttachmentStatus.ACTIVE
-      },
+      }),
       include: this.attachmentInclude
     });
 
@@ -412,9 +430,12 @@ export class AttachmentsService {
     };
   }
 
-  private async resolveOwnerUserId(userPublicId: string): Promise<bigint> {
-    const user = await this.prisma.userSystem.findUnique({
-      where: { publicId: userPublicId },
+  private async resolveOwnerUserId(
+    userPublicId: string,
+    actor?: AuthTokenPayload
+  ): Promise<bigint> {
+    const user = await this.prisma.userSystem.findFirst({
+      where: actor ? tenantWhere(actor, { publicId: userPublicId }) : { publicId: userPublicId },
       select: { id: true }
     });
 
@@ -443,7 +464,8 @@ export class AttachmentsService {
   }
 
   private async resolveAudienceUserIds(
-    userPublicIds?: string[]
+    userPublicIds?: string[],
+    actor?: AuthTokenPayload
   ): Promise<bigint[]> {
     const normalizedPublicIds = Array.from(
       new Set((userPublicIds ?? []).map((item) => item.trim()))
@@ -454,7 +476,11 @@ export class AttachmentsService {
     }
 
     const users = await this.prisma.userSystem.findMany({
-      where: {
+      where: actor ? tenantWhere(actor, {
+        publicId: {
+          in: normalizedPublicIds
+        }
+      }) : {
         publicId: {
           in: normalizedPublicIds
         }
