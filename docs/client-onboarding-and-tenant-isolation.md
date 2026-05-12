@@ -39,8 +39,11 @@ Rotas internas autenticadas:
 - A liberacao imediata cria a empresa raiz, trava exclusao, ativa o primeiro
   usuario administrador com MFA sugerido e grava trilha de auditoria.
 
-O envio real ainda nao foi ligado a SMTP/SMS/WhatsApp. O sistema grava mensagens
-em `notification_outbox`; workers de entrega devem consumir essa fila.
+O envio de e-mail ja usa `notification_outbox` com worker SMTP. Quando
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM` estiverem configurados,
+o worker processa mensagens `EMAIL`, marca como `SENT` em sucesso e como
+`FAILED` apos o limite de tentativas. SMS/WhatsApp continuam reservados para
+adapters futuros.
 
 ## Dados salvos
 
@@ -95,7 +98,7 @@ excecao sem tenant, apenas fora de producao.
 
 ## Proximas entregas relacionadas
 
-1. Envio real de e-mail/SMS/WhatsApp a partir de `notification_outbox`.
+1. Adapters reais de SMS/WhatsApp a partir de `notification_outbox`.
 2. Administracao completa do registry comercial de CNPJs.
 3. Vinculo assistido do primeiro usuario Firebase ao usuario interno criado.
 4. Captcha/WAF em producao para o formulario publico.

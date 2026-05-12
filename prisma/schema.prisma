@@ -194,6 +194,7 @@ enum NotificationOutboxChannel {
 
 enum NotificationOutboxStatus {
   PENDING
+  PROCESSING
   SENT
   FAILED
   CANCELED
@@ -338,8 +339,11 @@ model NotificationOutbox {
   subject             String?                   @db.VarChar(180)
   message             String                    @db.Text
   status              NotificationOutboxStatus  @default(PENDING)
+  attempts            Int                       @default(0)
   metadataJson        Json?
   queuedAt            DateTime                  @default(now())
+  lastAttemptAt       DateTime?
+  nextAttemptAt       DateTime?
   sentAt              DateTime?
   failedAt            DateTime?
   failureReason       String?                   @db.VarChar(255)

@@ -100,6 +100,20 @@ const environmentSchema = z.object({
   SENSITIVE_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(10),
   PUBLIC_SUBMISSIONS_ENABLED: booleanFromEnv.default(false),
   PUBLIC_SUBMISSION_TOKEN: optionalStringFromEnv,
+  NOTIFICATION_OUTBOX_WORKER_ENABLED: booleanFromEnv.default(true),
+  NOTIFICATION_OUTBOX_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30000),
+  NOTIFICATION_OUTBOX_BATCH_SIZE: z.coerce.number().int().positive().default(10),
+  NOTIFICATION_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  SMTP_HOST: optionalStringFromEnv,
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: booleanFromEnv.default(false),
+  SMTP_USER: optionalStringFromEnv,
+  SMTP_PASSWORD: optionalStringFromEnv,
+  SMTP_FROM: optionalStringFromEnv,
   SEED_ADMIN_NAME: optionalStringFromEnv,
   SEED_ADMIN_EMAIL: optionalEmailFromEnv,
   SEED_ADMIN_FIREBASE_UID: optionalStringFromEnv,
