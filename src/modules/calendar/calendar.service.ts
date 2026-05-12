@@ -7,7 +7,6 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import {
-  AccessProfileCode,
   CalendarEntryKind,
   CalendarEntryStatus,
   CalendarEntryTargetType,
@@ -190,6 +189,10 @@ export class CalendarService {
 
     if (query.recurrenceRule) {
       and.push({ recurrenceRule: query.recurrenceRule });
+    }
+
+    if (query.holidayRegionCode) {
+      and.push({ holidayRegionCode: query.holidayRegionCode });
     }
 
     const startsAt = this.dateFilter(query.startsAtFrom, query.startsAtTo);
@@ -731,6 +734,7 @@ export class CalendarService {
     offsetBusinessDays: number;
     notificationTime: string;
     holidayRegionCode?: string | null;
+    nonBusinessDays: CalendarBusinessDaySet;
   }): Date {
     const dueDate = this.withTime(input.startsAt, input.notificationTime);
 
@@ -739,17 +743,27 @@ export class CalendarService {
         return this.subtractBusinessDays(
           dueDate,
           1,
-          input.holidayRegionCode
+          input.holidayRegionCode,
+          input.nonBusinessDays
         );
       case CalendarNotificationPolicy.SAME_DAY_OR_PREVIOUS_BUSINESS_DAY:
-        return this.isBusinessDay(dueDate, input.holidayRegionCode)
+        return this.isBusinessDay(
+          dueDate,
+          input.holidayRegionCode,
+          input.nonBusinessDays
+        )
           ? dueDate
-          : this.previousBusinessDay(dueDate, input.holidayRegionCode);
+          : this.previousBusinessDay(
+              dueDate,
+              input.holidayRegionCode,
+              input.nonBusinessDays
+            );
       case CalendarNotificationPolicy.CUSTOM_BUSINESS_DAYS_BEFORE:
         return this.subtractBusinessDays(
           dueDate,
           input.offsetBusinessDays,
-          input.holidayRegionCode
+          input.holidayRegionCode,
+          input.nonBusinessDays
         );
       case CalendarNotificationPolicy.ON_DUE_DATE:
       default:
@@ -760,14 +774,15 @@ export class CalendarService {
   private subtractBusinessDays(
     date: Date,
     days: number,
-    holidayRegionCode?: string | null
+    holidayRegionCode: string | null | undefined,
+    nonBusinessDays: CalendarBusinessDaySet
   ): Date {
     let cursor = new Date(date);
     let remaining = days;
 
     while (remaining > 0) {
       cursor = this.addDays(cursor, -1);
-      if (this.isBusinessDay(cursor, holidayRegionCode)) {
+      if (this.isBusinessDay(cursor, holidayRegionCode, nonBusinessDays)) {
         remaining -= 1;
       }
     }
@@ -777,11 +792,12 @@ export class CalendarService {
 
   private previousBusinessDay(
     date: Date,
-    holidayRegionCode?: string | null
+    holidayRegionCode: string | null | undefined,
+    nonBusinessDays: CalendarBusinessDaySet
   ): Date {
     let cursor = new Date(date);
     for (let index = 0; index < 370; index += 1) {
-      if (this.isBusinessDay(cursor, holidayRegionCode)) {
+      if (this.isBusinessDay(cursor, holidayRegionCode, nonBusinessDays)) {
         return cursor;
       }
       cursor = this.addDays(cursor, -1);
@@ -789,9 +805,16 @@ export class CalendarService {
     return cursor;
   }
 
-  private isBusinessDay(date: Date, holidayRegionCode?: string | null): boolean {
+  private isBusinessDay(
+    date: Date,
+    holidayRegionCode: string | null | undefined,
+    nonBusinessDays: CalendarBusinessDaySet
+  ): boolean {
     const weekday = date.getDay();
     if (weekday === 0 || weekday === 6) {
+      return false;
+    }
+    if (this.isCustomNonBusinessDay(date, nonBusinessDays)) {
       return false;
     }
     return !this.isBrazilianFixedHoliday(date, holidayRegionCode);
@@ -822,6 +845,60 @@ export class CalendarService {
 
     // Calendarios regionais/moveis entram aqui sem alterar o contrato publico.
     return false;
+  }
+
+  private isCustomNonBusinessDay(
+    date: Date,
+    nonBusinessDays: CalendarBusinessDaySet
+  ): boolean {
+    return (
+      nonBusinessDays.exact.has(this.dateKey(date)) ||
+      nonBusinessDays.annual.has(this.monthDayKey(date))
+    );
+  }
+
+  private async loadNonBusinessDayKeys(
+    actor: AuthTokenPayload,
+    referenceDate: Date,
+    regionCode?: string | null
+  ): Promise<CalendarBusinessDaySet> {
+    const normalizedRegionCode = this.nullIfEmpty(regionCode);
+    const from = this.addDays(referenceDate, -370);
+    const to = this.addDays(referenceDate, 1);
+    const and: Prisma.CalendarNonBusinessDayWhereInput[] = [
+      { active: true },
+      {
+        OR: [
+          { date: { gte: from, lte: to } },
+          { isRecurringYearly: true }
+        ]
+      }
+    ];
+
+    if (normalizedRegionCode) {
+      and.push({
+        OR: [{ regionCode: null }, { regionCode: normalizedRegionCode }]
+      });
+    } else {
+      and.push({ regionCode: null });
+    }
+
+    const items = await this.prisma.calendarNonBusinessDay.findMany({
+      where: tenantWhere(actor, { AND: and }),
+      select: {
+        date: true,
+        isRecurringYearly: true
+      }
+    });
+
+    return {
+      exact: new Set(items.map((item) => this.dateKey(item.date))),
+      annual: new Set(
+        items
+          .filter((item) => item.isRecurringYearly)
+          .map((item) => this.monthDayKey(item.date))
+      )
+    };
   }
 
   private dateFilter(
@@ -906,6 +983,19 @@ export class CalendarService {
     return result;
   }
 
+  private dateKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  private monthDayKey(date: Date): string {
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+      date.getDate()
+    ).padStart(2, '0')}`;
+  }
+
   private normalizeChannels(
     channels?: CalendarNotificationChannel[]
   ): CalendarNotificationChannel[] {
@@ -916,6 +1006,100 @@ export class CalendarService {
       calendarNotificationChannels.includes(channel)
     );
     return filtered.length > 0 ? filtered : ['IN_APP', 'EMAIL'];
+  }
+
+  private recurrenceRuleValue(value?: string | null): string | null {
+    const normalized = this.nullIfEmpty(value);
+    return normalized && normalized !== 'NONE' ? normalized : null;
+  }
+
+  private audienceJson(
+    dto: Pick<
+      CreateCalendarEntryDto,
+      'audienceProfileCodes' | 'audienceContractTypePublicIds'
+    >
+  ): Prisma.InputJsonValue | undefined {
+    if (
+      dto.audienceProfileCodes === undefined &&
+      dto.audienceContractTypePublicIds === undefined
+    ) {
+      return undefined;
+    }
+
+    const profileCodes = dto.audienceProfileCodes ?? [];
+    const contractTypePublicIds = dto.audienceContractTypePublicIds ?? [];
+
+    return {
+      profileCodes,
+      contractTypePublicIds
+    };
+  }
+
+  private async queueAudienceNotifications(
+    item: CalendarEntryWithRelations,
+    dto: CreateCalendarEntryDto,
+    channels: CalendarNotificationChannel[]
+  ) {
+    if (item.kind !== CalendarEntryKind.NOTICE || !channels.includes('EMAIL')) {
+      return;
+    }
+
+    const profileCodes = dto.audienceProfileCodes ?? [];
+    if (profileCodes.length === 0) {
+      return;
+    }
+
+    const users = await this.prisma.userSystem.findMany({
+      where: {
+        ...(item.tenantRootCompanyId
+          ? { tenantRootCompanyId: item.tenantRootCompanyId }
+          : {}),
+        status: UserSystemStatus.ACTIVE,
+        email: { not: '' },
+        accessProfiles: {
+          some: {
+            accessProfile: {
+              code: { in: profileCodes }
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true
+      }
+    });
+
+    if (users.length === 0) {
+      return;
+    }
+
+    const message = [
+      dto.description?.trim() || item.title,
+      '',
+      `Recado enviado pelo PariFlow Partners para os perfis: ${profileCodes.join(
+        ', '
+      )}.`,
+      `Agenda: ${item.publicId}.`
+    ].join('\n');
+
+    await this.prisma.notificationOutbox.createMany({
+      data: users.map((user) => ({
+        publicId: createPublicId('not'),
+        tenantRootCompanyId: item.tenantRootCompanyId,
+        channel: NotificationOutboxChannel.EMAIL,
+        target: user.email,
+        subject: item.title,
+        message,
+        metadataJson: {
+          source: 'shared_calendar_notice',
+          calendarEntryPublicId: item.publicId,
+          userSystemId: String(user.id),
+          profileCodes
+        } as Prisma.InputJsonValue
+      }))
+    });
   }
 
   private async resolveAuthenticatedUserId(userPublicId: string): Promise<bigint> {
@@ -992,6 +1176,9 @@ export class CalendarService {
       priority: item.priority,
       priorityLabel: this.priorityLabel(item.priority),
       targetType: item.targetType,
+      category: item.category,
+      recurrenceRule: item.recurrenceRule,
+      audience: this.audienceFromJson(item.audienceJson),
       title: item.title,
       description: item.description ?? '',
       startsAt: item.startsAt,
@@ -1080,6 +1267,44 @@ export class CalendarService {
     return channels.length > 0 ? channels : ['IN_APP'];
   }
 
+  private audienceFromJson(value: Prisma.JsonValue) {
+    if (!value || Array.isArray(value) || typeof value !== 'object') {
+      return {
+        profileCodes: <string[]>[],
+        contractTypePublicIds: <string[]>[]
+      };
+    }
+
+    const raw = value as Record<string, unknown>;
+    return {
+      profileCodes: Array.isArray(raw.profileCodes)
+        ? raw.profileCodes.filter((item): item is string => typeof item === 'string')
+        : <string[]>[],
+      contractTypePublicIds: Array.isArray(raw.contractTypePublicIds)
+        ? raw.contractTypePublicIds.filter(
+            (item): item is string => typeof item === 'string'
+          )
+        : <string[]>[]
+    };
+  }
+
+  private mapNonBusinessDay(item: CalendarNonBusinessDay) {
+    return {
+      publicId: item.publicId,
+      date: item.date,
+      dateLabel: this.formatDate(item.date),
+      name: item.name,
+      scope: item.scope,
+      regionCode: item.regionCode,
+      cityName: item.cityName,
+      isRecurringYearly: item.isRecurringYearly,
+      active: item.active,
+      notes: item.notes ?? '',
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt
+    };
+  }
+
   private targetLabel(item: CalendarEntryWithRelations): string {
     if (item.person) {
       return item.person.name;
@@ -1103,7 +1328,15 @@ export class CalendarService {
   }
 
   private kindLabel(kind: CalendarEntryKind): string {
-    return kind === CalendarEntryKind.REMINDER ? 'Lembrete' : 'Compromisso';
+    switch (kind) {
+      case CalendarEntryKind.REMINDER:
+        return 'Lembrete';
+      case CalendarEntryKind.NOTICE:
+        return 'Recado';
+      case CalendarEntryKind.APPOINTMENT:
+      default:
+        return 'Compromisso';
+    }
   }
 
   private statusLabel(status: CalendarEntryStatus): string {
@@ -1171,6 +1404,12 @@ export class CalendarService {
     const hour = String(value.getHours()).padStart(2, '0');
     const minute = String(value.getMinutes()).padStart(2, '0');
     return `${day}/${month}/${value.getFullYear()} ${hour}:${minute}`;
+  }
+
+  private formatDate(value: Date): string {
+    const day = String(value.getDate()).padStart(2, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month}/${value.getFullYear()}`;
   }
 
   private nullIfEmpty(value?: string | null): string | null {

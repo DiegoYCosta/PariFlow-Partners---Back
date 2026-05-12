@@ -97,6 +97,16 @@ export class ListCalendarEntriesQueryDto {
   @MaxLength(80)
   recurrenceRule?: string;
 
+  @ApiPropertyOptional({ example: 'BR-SP-CAMPINAS' })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  holidayRegionCode?: string;
+
   @ApiPropertyOptional({
     example: '2026-05-01',
     description: 'Data inicial do recorte. Aceita ISO, YYYY-MM-DD ou DD/MM/AAAA.'
