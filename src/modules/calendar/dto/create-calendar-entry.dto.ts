@@ -317,4 +317,14 @@ export class CreateCalendarEntryDto {
   @IsNotEmpty()
   @MaxLength(26)
   positionPublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'Ajuste solicitado pelo RH.',
+    description: 'Justificativa da ultima edicao exibida nos calendarios.'
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(180)
+  editJustification?: string;
 }

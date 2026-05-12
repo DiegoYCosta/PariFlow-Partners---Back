@@ -59,7 +59,8 @@ const calendarEntryInclude = {
   },
   position: true,
   createdByUserSystem: true,
-  assignedToUserSystem: true
+  assignedToUserSystem: true,
+  updatedByUserSystem: true
 } satisfies Prisma.CalendarEntryInclude;
 
 type CalendarEntryWithRelations = Prisma.CalendarEntryGetPayload<{
@@ -477,6 +478,10 @@ export class CalendarService {
         notificationOffsetBusinessDays,
         notificationTime,
         notificationScheduledAt,
+        updatedByUserSystemId: actorUserId,
+        ...(dto.editJustification !== undefined
+          ? { lastEditJustification: this.nullIfEmpty(dto.editJustification) }
+          : {}),
         ...(dto.notificationChannels
           ? {
               notificationChannelsJson: this.normalizeChannels(
@@ -522,7 +527,8 @@ export class CalendarService {
       where: { id: current.id },
       data: {
         status: CalendarEntryStatus.CANCELED,
-        canceledAt: new Date()
+        canceledAt: new Date(),
+        updatedByUserSystemId: actorUserId
       },
       include: calendarEntryInclude
     });
@@ -577,12 +583,28 @@ export class CalendarService {
       orderBy: [{ date: 'asc' }, { name: 'asc' }],
       take: 200
     });
+    const nationalHolidays = this.brazilNationalHolidaysForRange(
+      query.from,
+      query.to
+    );
+    const mappedItems = [
+      ...nationalHolidays.map((item) => this.mapBrazilNationalHoliday(item)),
+      ...items.map((item) => this.mapNonBusinessDay(item))
+    ].sort((left, right) => {
+      const leftDate = new Date(left.date).getTime();
+      const rightDate = new Date(right.date).getTime();
+      if (leftDate !== rightDate) {
+        return leftDate - rightDate;
+      }
+      return left.name.localeCompare(right.name);
+    });
 
     return {
-      items: items.map((item) => this.mapNonBusinessDay(item)),
+      items: mappedItems,
       meta: {
-        total: items.length,
-        note: 'Dias nao uteis entram no calculo de notificacoes em dias uteis.'
+        total: mappedItems.length,
+        note:
+          'Dias nao uteis entram no calculo de notificacoes em dias uteis. Feriados nacionais do Brasil sao padrao ate 2050.'
       }
     };
   }
@@ -999,13 +1021,16 @@ export class CalendarService {
     if (this.isCustomNonBusinessDay(date, nonBusinessDays)) {
       return false;
     }
-    return !this.isBrazilianFixedHoliday(date, holidayRegionCode);
+    return !this.isBrazilianNationalHoliday(date, holidayRegionCode);
   }
 
-  private isBrazilianFixedHoliday(
+  private isBrazilianNationalHoliday(
     date: Date,
     holidayRegionCode?: string | null
   ): boolean {
+    if (date.getFullYear() > 2050) {
+      return false;
+    }
     const key = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(
       date.getDate()
     ).padStart(2, '0')}`;
@@ -1025,8 +1050,94 @@ export class CalendarService {
       return true;
     }
 
+    const goodFriday = this.addDays(this.easterSunday(date.getFullYear()), -2);
+    if (this.dateKey(goodFriday) === this.dateKey(date)) {
+      return true;
+    }
+
     // Calendarios regionais/moveis entram aqui sem alterar o contrato publico.
     return false;
+  }
+
+  private brazilNationalHolidaysForRange(from?: string, to?: string) {
+    const range = this.nonBusinessDaysDisplayRange(from, to);
+    const holidays: Array<{ publicId: string; date: Date; name: string }> = [];
+    const fixed = [
+      ['01-01', 'Confraternizacao Universal'],
+      ['04-21', 'Tiradentes'],
+      ['05-01', 'Dia do Trabalho'],
+      ['09-07', 'Independencia do Brasil'],
+      ['10-12', 'Nossa Senhora Aparecida'],
+      ['11-02', 'Finados'],
+      ['11-15', 'Proclamacao da Republica'],
+      ['11-20', 'Dia Nacional de Zumbi e da Consciencia Negra'],
+      ['12-25', 'Natal']
+    ] as const;
+
+    for (
+      let year = range.from.getFullYear();
+      year <= range.to.getFullYear() && year <= 2050;
+      year += 1
+    ) {
+      for (const [monthDay, name] of fixed) {
+        const [month, day] = monthDay.split('-').map(Number);
+        const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+        if (date >= range.from && date <= range.to) {
+          holidays.push({
+            publicId: `dnu_br_${year}_${monthDay.replace('-', '')}`,
+            date,
+            name
+          });
+        }
+      }
+
+      const goodFriday = this.addDays(this.easterSunday(year), -2);
+      if (goodFriday >= range.from && goodFriday <= range.to) {
+        holidays.push({
+          publicId: `dnu_br_${year}_sexta_santa`,
+          date: goodFriday,
+          name: 'Paixao de Cristo'
+        });
+      }
+    }
+
+    return holidays;
+  }
+
+  private nonBusinessDaysDisplayRange(from?: string, to?: string) {
+    const now = new Date();
+    const start = from
+      ? this.parseDateOnlyBoundary(from, false)
+      : new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    const end = to
+      ? this.parseDateOnlyBoundary(to, true)
+      : new Date(start.getFullYear(), 11, 31, 23, 59, 59, 999);
+
+    if (end < start) {
+      throw new BadRequestException(
+        'Periodo de dias nao uteis invalido: data final anterior a inicial.'
+      );
+    }
+
+    return { from: start, to: end };
+  }
+
+  private easterSunday(year: number): Date {
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day, 12, 0, 0, 0);
   }
 
   private isCustomNonBusinessDay(
@@ -1894,6 +2005,15 @@ export class CalendarService {
             name: item.assignedToUserSystem.name
           }
         : null,
+      updatedBy: item.updatedByUserSystem
+        ? {
+            publicId: item.updatedByUserSystem.publicId,
+            name: item.updatedByUserSystem.name
+          }
+        : null,
+      lastEditJustification: item.lastEditJustification ?? '',
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
       canEdit: this.canManage(item, actor),
       canCancel:
         item.status !== CalendarEntryStatus.CANCELED &&
@@ -1959,6 +2079,35 @@ export class CalendarService {
       notes: item.notes ?? '',
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
+    };
+  }
+
+  private mapBrazilNationalHoliday(item: {
+    publicId: string;
+    date: Date;
+    name: string;
+  }) {
+    return {
+      publicId: item.publicId,
+      date: item.date,
+      dateLabel: this.formatDate(item.date),
+      name: item.name,
+      scope: 'BRAZIL_NATIONAL_HOLIDAY',
+      regionCode: null,
+      stateCode: null,
+      cityName: null,
+      applicability: {
+        regionCode: null,
+        stateCode: null,
+        cityName: null,
+        label: 'Brasil'
+      },
+      isRecurringYearly: false,
+      active: true,
+      notes:
+        'Feriado nacional padrao do Brasil gerado pelo calendario ate 2050.',
+      createdAt: item.date,
+      updatedAt: item.date
     };
   }
 

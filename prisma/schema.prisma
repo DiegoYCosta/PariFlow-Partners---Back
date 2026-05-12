@@ -397,6 +397,7 @@ model UserSystem {
   clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
   createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
   assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
+  updatedCalendarEntries  CalendarEntry[]          @relation("CalendarEntryUpdatedBy")
   createdNonBusinessDays  CalendarNonBusinessDay[] @relation("CalendarNonBusinessDayCreatedBy")
 
   @@index([tenantRootCompanyId])
@@ -850,22 +851,26 @@ model DocumentReceipt {
 }
 
 model TimelineRecord {
-  id                         BigInt               @id @default(autoincrement())
-  publicId                   String               @unique @db.VarChar(26)
-  tenantRootCompanyId        BigInt?
-  title                      String               @db.VarChar(180)
-  description                String               @db.Text
-  category                   String               @db.VarChar(80)
-  nature                     OccurrenceNature     @default(NEUTRAL)
-  referenceMonth             DateTime
-  eventDate                  DateTime?
-  visibility                 OccurrenceVisibility @default(INTERNAL)
-  status                     String               @default("ACTIVE") @db.VarChar(30)
-  createdByUserSystemPublicId String?             @db.VarChar(26)
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
-  tenantRootCompany          TenantRootCompany?   @relation("TimelineRecordTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
-  links                      TimelineRecordLink[]
+  id                          BigInt               @id @default(autoincrement())
+  publicId                    String               @unique @db.VarChar(26)
+  tenantRootCompanyId         BigInt?
+  title                       String               @db.VarChar(180)
+  description                 String               @db.Text
+  category                    String               @db.VarChar(80)
+  nature                      OccurrenceNature     @default(NEUTRAL)
+  referenceMonth              DateTime
+  eventDate                   DateTime?
+  visibility                  OccurrenceVisibility @default(INTERNAL)
+  status                      String               @default("ACTIVE") @db.VarChar(30)
+  createdByUserSystemPublicId String?              @db.VarChar(26)
+  createdByUserSystemName     String?              @db.VarChar(160)
+  updatedByUserSystemPublicId String?              @db.VarChar(26)
+  updatedByUserSystemName     String?              @db.VarChar(160)
+  lastEditJustification       String?              @db.VarChar(180)
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+  tenantRootCompany           TenantRootCompany?   @relation("TimelineRecordTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  links                       TimelineRecordLink[]
 
   @@index([tenantRootCompanyId, referenceMonth])
   @@index([tenantRootCompanyId, eventDate])
@@ -925,6 +930,8 @@ model CalendarEntry {
   positionId                     BigInt?
   createdByUserSystemId          BigInt?
   assignedToUserSystemId         BigInt?
+  updatedByUserSystemId          BigInt?
+  lastEditJustification          String?                    @db.VarChar(180)
   completedAt                    DateTime?
   canceledAt                     DateTime?
   createdAt                      DateTime                   @default(now())
@@ -937,6 +944,7 @@ model CalendarEntry {
   position                       Position?                  @relation(fields: [positionId], references: [id], onDelete: SetNull)
   createdByUserSystem            UserSystem?                @relation("CalendarEntryCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
   assignedToUserSystem           UserSystem?                @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
+  updatedByUserSystem            UserSystem?                @relation("CalendarEntryUpdatedBy", fields: [updatedByUserSystemId], references: [id], onDelete: SetNull)
   tenantRootCompany              TenantRootCompany?         @relation("CalendarEntryTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId, startsAt])
@@ -952,6 +960,7 @@ model CalendarEntry {
   @@index([positionId, startsAt])
   @@index([createdByUserSystemId, startsAt])
   @@index([assignedToUserSystemId, startsAt])
+  @@index([updatedByUserSystemId, updatedAt])
   @@index([notificationScheduledAt])
   @@map("agenda_item")
 }
@@ -999,20 +1008,20 @@ model RefreshToken {
 }
 
 model SensitiveSession {
-  id            BigInt                @id @default(autoincrement())
-  publicId      String                @unique @db.VarChar(26)
+  id            BigInt                 @id @default(autoincrement())
+  publicId      String                 @unique @db.VarChar(26)
   userSystemId  BigInt
   level         SensitiveSessionLevel
   status        SensitiveSessionStatus @default(PENDING)
-  justification String?               @db.Text
-  challengeHash String?               @db.VarChar(128)
-  attemptCount  Int                   @default(0)
-  requestedAt   DateTime              @default(now())
+  justification String?                @db.Text
+  challengeHash String?                @db.VarChar(128)
+  attemptCount  Int                    @default(0)
+  requestedAt   DateTime               @default(now())
   verifiedAt    DateTime?
   expiresAt     DateTime
-  ipAddress     String?               @db.VarChar(64)
-  userAgent     String?               @db.VarChar(255)
-  userSystem    UserSystem            @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+  ipAddress     String?                @db.VarChar(64)
+  userAgent     String?                @db.VarChar(255)
+  userSystem    UserSystem             @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
 
   @@index([userSystemId, status, expiresAt])
   @@map("sensitive_sessions")

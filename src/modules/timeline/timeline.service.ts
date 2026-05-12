@@ -79,6 +79,7 @@ export class TimelineService {
     const eventDate = dto.isMonthOnly ? null : this.parseEventDate(dto.eventDate);
 
     try {
+      const actorSnapshot = await this.resolveActorSnapshot(actor);
       const item = await this.prisma.timelineRecord.create({
         data: {
           publicId: createPublicId('tlr'),
@@ -91,7 +92,8 @@ export class TimelineService {
           eventDate,
           visibility: dto.visibility,
           status: dto.status ?? 'ACTIVE',
-          createdByUserSystemPublicId: actor.sub,
+          createdByUserSystemPublicId: actorSnapshot.publicId,
+          createdByUserSystemName: actorSnapshot.name,
           links: {
             create: links.map((link) => ({
               publicId: createPublicId('tll'),
@@ -138,6 +140,7 @@ export class TimelineService {
           : undefined;
 
     try {
+      const actorSnapshot = await this.resolveActorSnapshot(actor);
       const item = await this.prisma.timelineRecord.update({
         where: { id: current.id },
         data: {
@@ -149,6 +152,11 @@ export class TimelineService {
           ...(eventDate !== undefined ? { eventDate } : {}),
           ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
           ...(dto.status !== undefined ? { status: dto.status } : {}),
+          updatedByUserSystemPublicId: actorSnapshot.publicId,
+          updatedByUserSystemName: actorSnapshot.name,
+          ...(dto.editJustification !== undefined
+            ? { lastEditJustification: dto.editJustification }
+            : {}),
           ...(shouldReplaceLinks
             ? {
                 links: {
@@ -358,6 +366,17 @@ export class TimelineService {
     });
   }
 
+  private async resolveActorSnapshot(actor: AuthTokenPayload) {
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: actor.sub },
+      select: { publicId: true, name: true, email: true }
+    });
+    return {
+      publicId: user?.publicId ?? actor.sub,
+      name: user?.name ?? user?.email ?? actor.email ?? actor.sub
+    };
+  }
+
   private parseReferenceMonth(value: string): Date {
     const [year, month] = value.split('-').map(Number);
     return new Date(year, month - 1, 1, 0, 0, 0, 0);
@@ -387,6 +406,19 @@ export class TimelineService {
       visibility: item.visibility,
       status: item.status,
       createdByUserSystemPublicId: item.createdByUserSystemPublicId,
+      createdBy: item.createdByUserSystemPublicId
+        ? {
+            publicId: item.createdByUserSystemPublicId,
+            name: item.createdByUserSystemName ?? item.createdByUserSystemPublicId
+          }
+        : null,
+      updatedBy: item.updatedByUserSystemPublicId
+        ? {
+            publicId: item.updatedByUserSystemPublicId,
+            name: item.updatedByUserSystemName ?? item.updatedByUserSystemPublicId
+          }
+        : null,
+      lastEditJustification: item.lastEditJustification ?? '',
       links: item.links.map((link) => this.mapLink(link)),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt

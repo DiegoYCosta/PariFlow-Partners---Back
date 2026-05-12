@@ -110,15 +110,18 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 ### Agenda, Relatorios e Notificacoes
 
 - `GET/POST/PATCH/DELETE /api/v1/agenda`
+- `GET/POST /api/v1/agenda/non-business-days`
+- `DELETE /api/v1/agenda/non-business-days/:publicId`
 - `POST /api/v1/relatorios/executar`
 - `notification_outbox` com worker SMTP para e-mail quando `SMTP_*` estiver
   configurado
 
-A agenda atual suporta compromissos/lembretes, politicas de notificacao por dia
-util, canais de notificacao e relatorio `controls_calendar`. A proxima fase e
-calendario compartilhado por empresa raiz, feriados/dias nao uteis
-configuraveis, comunicados por grupo, classificacoes de lembrete e filtros
-avancados.
+A agenda atual suporta compromissos/lembretes, recorrencia simples, politicas
+de notificacao por dia util, canais de notificacao, dias nao uteis e relatorio
+`controls_calendar`. Toda empresa recebe por padrao os feriados nacionais do
+Brasil no calendario compartilhado ate 2050; esses feriados sao base do sistema
+e pedidos de exclusao devem ser encaminhados ao suporte. Dias nao uteis
+adicionais podem ser cadastrados por empresa, regiao, estado ou cidade.
 
 As rotas `*/submissions` ficam desligadas por padrao com
 `PUBLIC_SUBMISSIONS_ENABLED=false`. Se forem habilitadas futuramente, producao

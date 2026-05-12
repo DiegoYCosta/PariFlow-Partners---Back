@@ -106,4 +106,14 @@ export class CreateTimelineRecordDto {
   @ValidateNested({ each: true })
   @Type(() => TimelineRecordLinkDto)
   links?: TimelineRecordLinkDto[];
+
+  @ApiPropertyOptional({
+    example: 'Ajuste solicitado pelo financeiro.',
+    description: 'Justificativa da ultima edicao exibida no calendario.'
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(180)
+  editJustification?: string;
 }
