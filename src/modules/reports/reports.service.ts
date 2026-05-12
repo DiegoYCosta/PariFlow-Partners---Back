@@ -1086,6 +1086,12 @@ export class ReportsService {
         contrato: contractId,
         responsavel: assignee || "nao atribuido",
         criadoPor: createdBy || "sistema",
+        notificacao: this.formatDateTimeNullable(entry.notificationScheduledAt),
+        canal: this.calendarChannelsLabel(entry.notificationChannelsJson),
+        politica: this.calendarNotificationPolicyLabel(
+          entry.notificationPolicy,
+          entry.notificationOffsetBusinessDays,
+        ),
         diaNaoUtil: this.nonBusinessDayLabel(
           entry.startsAt,
           entry.holidayRegionCode,
@@ -1135,6 +1141,8 @@ export class ReportsService {
         { key: "vinculo", label: "Vinculo" },
         { key: "empresa", label: "Empresa" },
         { key: "responsavel", label: "Responsavel" },
+        { key: "notificacao", label: "Notificacao" },
+        { key: "canal", label: "Canal" },
         { key: "diaNaoUtil", label: "Dia nao util" },
       ],
       rows,
@@ -1841,6 +1849,48 @@ export class ReportsService {
       labels.push(`Feriado (${holidayRegionCode})`);
     }
     return labels.length > 0 ? labels.join(" / ") : "Dia util";
+  }
+
+  private calendarChannelsLabel(value: Prisma.JsonValue): string {
+    if (!Array.isArray(value)) {
+      return "No app";
+    }
+
+    const labels = value
+      .map((item) => {
+        switch (item) {
+          case "EMAIL":
+            return "Email";
+          case "PUSH":
+            return "Push";
+          case "WEBHOOK":
+            return "Webhook";
+          case "IN_APP":
+            return "No app";
+          default:
+            return "";
+        }
+      })
+      .filter((item) => item.length > 0);
+
+    return labels.length > 0 ? labels.join(", ") : "No app";
+  }
+
+  private calendarNotificationPolicyLabel(
+    policy: string,
+    offsetBusinessDays: number,
+  ): string {
+    switch (policy) {
+      case "ONE_BUSINESS_DAY_BEFORE":
+        return "1 dia util antes";
+      case "SAME_DAY_OR_PREVIOUS_BUSINESS_DAY":
+        return "No dia ou no dia util anterior";
+      case "CUSTOM_BUSINESS_DAYS_BEFORE":
+        return `${offsetBusinessDays} dia(s) util(eis) antes`;
+      case "ON_DUE_DATE":
+      default:
+        return "No dia";
+    }
   }
 
   private applyTextFilter<T extends ReportRow>(
