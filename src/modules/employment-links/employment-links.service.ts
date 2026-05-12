@@ -6,10 +6,15 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import { EmploymentLinkStatus, Prisma } from '@prisma/client';
+import {
+  tenantCreateRelation,
+  tenantWhere
+} from '../../common/tenant/tenant-scope';
 import { buildPaginationArgs, buildPaginationMeta } from '../../common/utils/pagination';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { createPublicId } from '../../common/utils/public-id';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { CreateDismissalDto } from './dto/create-dismissal.dto';
 import { CreateEmploymentLinkDto } from './dto/create-employment-link.dto';
 import { CreateEmploymentMoveDto } from './dto/create-employment-move.dto';
@@ -40,11 +45,11 @@ type EmploymentLinkWithRelations = Prisma.EmploymentLinkGetPayload<{
 export class EmploymentLinksService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async list(query: ListEmploymentLinksQueryDto) {
+  async list(query: ListEmploymentLinksQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const { page, perPage, skip } = buildPaginationArgs(query);
-    const where = this.buildListWhere(query);
+    const where = tenantWhere(actor, this.buildListWhere(query));
 
     try {
       const [total, items] = await Promise.all([
@@ -92,11 +97,11 @@ export class EmploymentLinksService {
     }
   }
 
-  async findOne(publicId: string) {
+  async findOne(publicId: string, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     try {
-      const item = await this.loadEmploymentLink(publicId);
+      const item = await this.loadEmploymentLink(publicId, actor);
 
       if (!item) {
         throw new NotFoundException('Vinculo nao encontrado.');
@@ -110,7 +115,7 @@ export class EmploymentLinksService {
     }
   }
 
-  async create(dto: CreateEmploymentLinkDto) {
+  async create(dto: CreateEmploymentLinkDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const startsAt = new Date(dto.startsAt);
@@ -124,17 +129,19 @@ export class EmploymentLinksService {
 
     try {
       const [person, providerCompany, contract, position] = await Promise.all([
-        this.prisma.person.findUnique({
-          where: { publicId: dto.personPublicId }
+        this.prisma.person.findFirst({
+          where: tenantWhere(actor, { publicId: dto.personPublicId })
         }),
-        this.prisma.providerCompany.findUnique({
-          where: { publicId: dto.providerCompanyPublicId }
+        this.prisma.providerCompany.findFirst({
+          where: tenantWhere(actor, {
+            publicId: dto.providerCompanyPublicId
+          })
         }),
-        this.prisma.contract.findUnique({
-          where: { publicId: dto.contractPublicId }
+        this.prisma.contract.findFirst({
+          where: tenantWhere(actor, { publicId: dto.contractPublicId })
         }),
-        this.prisma.position.findUnique({
-          where: { publicId: dto.positionPublicId },
+        this.prisma.position.findFirst({
+          where: tenantWhere(actor, { publicId: dto.positionPublicId }),
           include: {
             service: true
           }
@@ -172,10 +179,11 @@ export class EmploymentLinksService {
       const item = await this.prisma.employmentLink.create({
         data: {
           publicId: createPublicId('vin'),
-          personId: person.id,
-          providerCompanyId: providerCompany.id,
-          contractId: contract.id,
-          positionId: position.id,
+          tenantRootCompany: tenantCreateRelation(actor),
+          person: { connect: { id: person.id } },
+          providerCompany: { connect: { id: providerCompany.id } },
+          contract: { connect: { id: contract.id } },
+          position: { connect: { id: position.id } },
           type: dto.type,
           status: dto.status ?? EmploymentLinkStatus.PENDING,
           startsAt,
@@ -183,7 +191,7 @@ export class EmploymentLinksService {
         }
       });
 
-      const hydrated = await this.loadEmploymentLink(item.publicId);
+      const hydrated = await this.loadEmploymentLink(item.publicId, actor);
 
       if (!hydrated) {
         throw new NotFoundException('Vinculo nao encontrado apos a criacao.');
@@ -197,10 +205,14 @@ export class EmploymentLinksService {
     }
   }
 
-  async createMove(publicId: string, dto: CreateEmploymentMoveDto) {
+  async createMove(
+    publicId: string,
+    dto: CreateEmploymentMoveDto,
+    actor: AuthTokenPayload
+  ) {
     this.prisma.assertConfigured();
 
-    const link = await this.loadEmploymentLink(publicId);
+    const link = await this.loadEmploymentLink(publicId, actor);
 
     if (!link) {
       throw new NotFoundException('Vinculo nao encontrado.');
@@ -225,7 +237,7 @@ export class EmploymentLinksService {
         }
       });
 
-      const hydrated = await this.loadEmploymentLink(publicId);
+      const hydrated = await this.loadEmploymentLink(publicId, actor);
 
       if (!hydrated) {
         throw new NotFoundException('Vinculo nao encontrado apos a movimentacao.');
@@ -239,10 +251,14 @@ export class EmploymentLinksService {
     }
   }
 
-  async registerDismissal(publicId: string, dto: CreateDismissalDto) {
+  async registerDismissal(
+    publicId: string,
+    dto: CreateDismissalDto,
+    actor: AuthTokenPayload
+  ) {
     this.prisma.assertConfigured();
 
-    const link = await this.loadEmploymentLink(publicId);
+    const link = await this.loadEmploymentLink(publicId, actor);
 
     if (!link) {
       throw new NotFoundException('Vinculo nao encontrado.');
@@ -300,7 +316,7 @@ export class EmploymentLinksService {
         });
       });
 
-      const hydrated = await this.loadEmploymentLink(publicId);
+      const hydrated = await this.loadEmploymentLink(publicId, actor);
 
       if (!hydrated) {
         throw new NotFoundException('Vinculo nao encontrado apos o desligamento.');
@@ -388,9 +404,12 @@ export class EmploymentLinksService {
     };
   }
 
-  private async loadEmploymentLink(publicId: string) {
-    return this.prisma.employmentLink.findUnique({
-      where: { publicId },
+  private async loadEmploymentLink(
+    publicId: string,
+    actor: AuthTokenPayload
+  ) {
+    return this.prisma.employmentLink.findFirst({
+      where: tenantWhere(actor, { publicId }),
       include: {
         person: true,
         providerCompany: true,

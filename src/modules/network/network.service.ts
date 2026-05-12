@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EmploymentLinkStatus, Prisma } from '@prisma/client';
+import { tenantWhere } from '../../common/tenant/tenant-scope';
 import { rethrowPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import { NetworkGraphQueryDto } from './dto/network-graph-query.dto';
 
 const graphContractInclude = {
@@ -74,12 +76,15 @@ type NormalizedNetworkGraphQuery = Omit<
 export class NetworkService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async graph(query: NetworkGraphQueryDto) {
+  async graph(query: NetworkGraphQueryDto, actor: AuthTokenPayload) {
     this.prisma.assertConfigured();
 
     const period = this.resolvePeriod(query.periodPreset);
     const normalizedQuery = this.normalizeQuery(query);
-    const where = this.buildContractWhere(normalizedQuery, period);
+    const where = tenantWhere(
+      actor,
+      this.buildContractWhere(normalizedQuery, period)
+    );
 
     try {
       const contracts = await this.prisma.contract.findMany({

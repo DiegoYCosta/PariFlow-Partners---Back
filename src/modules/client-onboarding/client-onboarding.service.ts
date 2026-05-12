@@ -2,7 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
-  Injectable
+  Injectable,
+  NotFoundException
 } from '@nestjs/common';
 import {
   AccessProfileCode,
@@ -19,6 +20,7 @@ import { createHash, randomInt } from 'node:crypto';
 import { createPublicId } from '../../common/utils/public-id';
 import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
+import { AuthTokenPayload } from '../auth/interfaces/auth-token-payload.interface';
 import {
   CLIENT_ONBOARDING_REVIEW_EMAIL,
   CnpjOnboardingRegistryEntry,
@@ -32,11 +34,24 @@ import {
   ClientOnboardingAccessQuotasDto,
   CreateClientOnboardingDto
 } from './dto/create-client-onboarding.dto';
+import { ReviewClientOnboardingDto } from './dto/review-client-onboarding.dto';
 import { StartClientOnboardingVerificationDto } from './dto/start-client-onboarding-verification.dto';
 
 type RegistryRecord = CnpjOnboardingRegistryEntry & {
   id?: bigint;
 };
+
+type FirstTenantAdminSource = {
+  primaryContactName: string;
+  primaryContactEmail?: string | null;
+};
+
+type ClientOnboardingRequestWithRoot =
+  Prisma.ClientOnboardingRequestGetPayload<{
+    include: {
+      tenantRootCompany: true;
+    };
+  }>;
 
 @Injectable()
 export class ClientOnboardingService {
@@ -291,6 +306,181 @@ export class ClientOnboardingService {
     };
   }
 
+  async listRequests(status?: ClientOnboardingRequestStatus | string) {
+    this.prisma.assertConfigured();
+
+    const statusFilter = this.parseRequestStatus(status);
+    const items = await this.prisma.clientOnboardingRequest.findMany({
+      where: statusFilter ? { status: statusFilter } : undefined,
+      take: 100,
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      include: {
+        tenantRootCompany: true
+      }
+    });
+
+    return {
+      items: items.map((item) => this.mapAdminRequest(item))
+    };
+  }
+
+  async approveRequest(
+    publicId: string,
+    dto: ReviewClientOnboardingDto,
+    actor: AuthTokenPayload
+  ) {
+    this.prisma.assertConfigured();
+
+    const current = await this.findOnboardingRequestForReview(publicId);
+    if (current.status === ClientOnboardingRequestStatus.RELEASED) {
+      return this.mapAdminRequest(current);
+    }
+    if (!this.canCreateRootCompany(current.cnpjStatus)) {
+      throw new BadRequestException(
+        'CNPJ nao esta liberado para aprovacao de empresa raiz.'
+      );
+    }
+
+    const now = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const actorUserId = await this.resolveActorUserId(tx, actor);
+      const rootCompany =
+        current.tenantRootCompany ??
+        (await tx.tenantRootCompany.create({
+          data: {
+            publicId: createPublicId('org'),
+            tradeName: current.tradeName,
+            legalName: current.legalName,
+            cnpj: current.cnpj,
+            stateRegistration: current.stateRegistration,
+            municipalRegistration: current.municipalRegistration,
+            companyType: current.companyType,
+            segment: current.segment,
+            primaryCnae: current.primaryCnae,
+            companySize: current.companySize,
+            contractType: current.contractType,
+            status: this.resolveRootStatus(current.contractType, true),
+            isRootCompany: true,
+            deletionLocked: true,
+            primaryContactName: current.primaryContactName,
+            primaryContactEmail: current.primaryContactEmail,
+            primaryContactPhone: current.primaryContactPhone,
+            accountQuotasJson:
+              current.accountQuotasJson as Prisma.InputJsonValue,
+            verifiedAt: now
+          }
+        }));
+
+      const updatedRoot = await tx.tenantRootCompany.update({
+        where: { id: rootCompany.id },
+        data: {
+          status: this.resolveRootStatus(current.contractType, true),
+          verifiedAt: now,
+          primaryContactName: current.primaryContactName,
+          primaryContactEmail: current.primaryContactEmail,
+          primaryContactPhone: current.primaryContactPhone
+        }
+      });
+
+      const request = await tx.clientOnboardingRequest.update({
+        where: { id: current.id },
+        data: {
+          tenantRootCompanyId: updatedRoot.id,
+          status: ClientOnboardingRequestStatus.RELEASED,
+          reviewedAt: now,
+          releasedAt: now,
+          reviewNotificationEmail: null
+        },
+        include: {
+          tenantRootCompany: true
+        }
+      });
+
+      await this.ensureFirstTenantAdmin(tx, updatedRoot.id, current, true);
+      await this.queueReviewNotification(
+        tx,
+        updatedRoot.id,
+        current.primaryContactEmail,
+        'Cadastro PariFlow Partners aprovado',
+        'Seu cadastro foi aprovado e a empresa raiz foi liberada para acesso.'
+      );
+      await this.recordOnboardingReviewAudit(
+        tx,
+        request.publicId,
+        updatedRoot.id,
+        actorUserId,
+        'CLIENT_ONBOARDING_APPROVED',
+        dto.note
+      );
+
+      return request;
+    });
+
+    return this.mapAdminRequest(result);
+  }
+
+  async rejectRequest(
+    publicId: string,
+    dto: ReviewClientOnboardingDto,
+    actor: AuthTokenPayload
+  ) {
+    this.prisma.assertConfigured();
+
+    const current = await this.findOnboardingRequestForReview(publicId);
+    if (current.status === ClientOnboardingRequestStatus.RELEASED) {
+      throw new BadRequestException(
+        'Solicitacao ja liberada nao pode ser negada.'
+      );
+    }
+    if (current.status === ClientOnboardingRequestStatus.REJECTED) {
+      return this.mapAdminRequest(current);
+    }
+    const result = await this.prisma.$transaction(async (tx) => {
+      const actorUserId = await this.resolveActorUserId(tx, actor);
+
+      if (current.tenantRootCompanyId) {
+        await tx.tenantRootCompany.update({
+          where: { id: current.tenantRootCompanyId },
+          data: {
+            status: TenantRootCompanyStatus.UNAVAILABLE
+          }
+        });
+      }
+
+      const request = await tx.clientOnboardingRequest.update({
+        where: { id: current.id },
+        data: {
+          status: ClientOnboardingRequestStatus.REJECTED,
+          reviewedAt: new Date(),
+          reviewNotificationEmail: null
+        },
+        include: {
+          tenantRootCompany: true
+        }
+      });
+
+      await this.queueReviewNotification(
+        tx,
+        current.tenantRootCompanyId ?? null,
+        current.primaryContactEmail,
+        'Cadastro PariFlow Partners negado',
+        'Seu cadastro foi analisado e nao foi liberado neste momento.'
+      );
+      await this.recordOnboardingReviewAudit(
+        tx,
+        request.publicId,
+        current.tenantRootCompanyId ?? null,
+        actorUserId,
+        'CLIENT_ONBOARDING_REJECTED',
+        dto.note
+      );
+
+      return request;
+    });
+
+    return this.mapAdminRequest(result);
+  }
+
   private normalizeCnpj(value: string) {
     const cnpj = digitsOnly(value);
 
@@ -512,6 +702,34 @@ export class ClientOnboardingService {
     };
   }
 
+  private parseRequestStatus(status?: ClientOnboardingRequestStatus | string) {
+    if (!status) {
+      return undefined;
+    }
+
+    const values = Object.values(ClientOnboardingRequestStatus);
+    if (values.includes(status as ClientOnboardingRequestStatus)) {
+      return status as ClientOnboardingRequestStatus;
+    }
+
+    throw new BadRequestException('Status de solicitacao invalido.');
+  }
+
+  private async findOnboardingRequestForReview(publicId: string) {
+    const request = await this.prisma.clientOnboardingRequest.findUnique({
+      where: { publicId },
+      include: {
+        tenantRootCompany: true
+      }
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitacao de onboarding nao encontrada.');
+    }
+
+    return request;
+  }
+
   private async recordOnboardingAudit(
     tx: Prisma.TransactionClient,
     requestPublicId: string,
@@ -530,10 +748,72 @@ export class ClientOnboardingService {
     });
   }
 
+  private async recordOnboardingReviewAudit(
+    tx: Prisma.TransactionClient,
+    requestPublicId: string,
+    tenantRootCompanyId: bigint | null,
+    userSystemId: bigint | null,
+    action: string,
+    note?: string
+  ) {
+    await tx.auditLog.create({
+      data: {
+        publicId: createPublicId('aud'),
+        tenantRootCompanyId,
+        userSystemId,
+        entityName: 'ClientOnboardingRequest',
+        entityPublicId: requestPublicId,
+        action,
+        description: note
+          ? `Analise interna registrada: ${note}`
+          : 'Analise interna registrada.'
+      }
+    });
+  }
+
+  private async queueReviewNotification(
+    tx: Prisma.TransactionClient,
+    tenantRootCompanyId: bigint | null,
+    targetEmail: string | null,
+    subject: string,
+    message: string
+  ) {
+    const target = normalizeEmail(targetEmail);
+    if (!target) {
+      return;
+    }
+
+    await tx.notificationOutbox.create({
+      data: {
+        publicId: createPublicId('not'),
+        tenantRootCompanyId,
+        channel: NotificationOutboxChannel.EMAIL,
+        target,
+        subject,
+        message,
+        metadataJson: {
+          source: 'client_onboarding_review'
+        } as Prisma.InputJsonValue
+      }
+    });
+  }
+
+  private async resolveActorUserId(
+    tx: Prisma.TransactionClient,
+    actor: AuthTokenPayload
+  ) {
+    const user = await tx.userSystem.findUnique({
+      where: { publicId: actor.sub },
+      select: { id: true }
+    });
+
+    return user?.id ?? null;
+  }
+
   private async ensureFirstTenantAdmin(
     tx: Prisma.TransactionClient,
     tenantRootCompanyId: bigint,
-    dto: CreateClientOnboardingDto,
+    dto: FirstTenantAdminSource,
     released: boolean
   ) {
     const email = normalizeEmail(dto.primaryContactEmail);
@@ -636,6 +916,38 @@ export class ClientOnboardingService {
       reviewNotificationEmail: item.reviewNotificationEmail,
       submittedAt: item.submittedAt,
       releasedAt: item.releasedAt
+    };
+  }
+
+  private mapAdminRequest(item: ClientOnboardingRequestWithRoot) {
+    return {
+      ...this.mapRequest(item),
+      tradeName: item.tradeName,
+      legalName: item.legalName,
+      companyType: item.companyType,
+      segment: item.segment,
+      primaryCnae: item.primaryCnae,
+      companySize: item.companySize,
+      cnpjStatus: item.cnpjStatus,
+      cnpjStatusLabel: this.cnpjStatusLabel(item.cnpjStatus),
+      primaryContact: {
+        name: item.primaryContactName,
+        email: item.primaryContactEmail,
+        phone: item.primaryContactPhone
+      },
+      verification: {
+        accepted: item.verificationAccepted,
+        channel: item.verificationChannel,
+        matchedRegistry: item.verificationMatchedRegistry,
+        target: item.verificationTarget,
+        challengePublicId: item.verificationChallengeId
+          ? item.verificationChallengeId.toString()
+          : null
+      },
+      reviewedAt: item.reviewedAt,
+      tenantRootCompany: item.tenantRootCompany
+        ? this.mapRootCompany(item.tenantRootCompany)
+        : null
     };
   }
 

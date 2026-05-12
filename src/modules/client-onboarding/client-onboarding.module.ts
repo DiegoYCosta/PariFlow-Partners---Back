@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../infra/database/prisma.module';
+import { ClientOnboardingAdminController } from './client-onboarding-admin.controller';
 import { ClientOnboardingController } from './client-onboarding.controller';
 import { ClientOnboardingService } from './client-onboarding.service';
 import { PublicOnboardingRateLimitGuard } from './public-onboarding-rate-limit.guard';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [ClientOnboardingController],
+  controllers: [ClientOnboardingController, ClientOnboardingAdminController],
   providers: [ClientOnboardingService, PublicOnboardingRateLimitGuard]
 })
 export class ClientOnboardingModule {}

@@ -9,12 +9,20 @@ sem Bearer porque o usuario ainda nao existe no Firebase:
 
 - `GET /api/v1/public/client-onboarding/options`
 - `GET /api/v1/public/client-onboarding/cnpj-status?cnpj=...`
+- `POST /api/v1/public/client-onboarding/verification/start`
 - `POST /api/v1/public/client-onboarding`
 
-O backend valida o CNPJ contra uma lista comercial interna em codigo. A lista
-tem CNPJs `AVAILABLE`, `AVAILABLE_FOR_TEST`, `IN_USE` e `UNAVAILABLE`, cada um
-com contato comercial previamente conhecido. A resposta publica mascara e-mail
-e telefone, para nao vazar o contato completo na tela de login.
+O backend valida o CNPJ contra o registry comercial
+`cliente_onboarding_cnpj_registry`, sem depender de dados hardcoded em runtime.
+O seed local ainda popula exemplos `AVAILABLE`, `AVAILABLE_FOR_TEST`, `IN_USE`
+e `UNAVAILABLE` quando a tabela esta vazia. A resposta publica mascara e-mail e
+telefone, para nao vazar o contato completo na tela de login.
+
+Rotas internas autenticadas:
+
+- `GET /api/v1/client-onboarding/requests`
+- `POST /api/v1/client-onboarding/requests/:publicId/approve`
+- `POST /api/v1/client-onboarding/requests/:publicId/reject`
 
 ## Regra de liberacao
 
@@ -22,16 +30,17 @@ e telefone, para nao vazar o contato completo na tela de login.
 - CNPJ `AVAILABLE_FOR_TEST`: vira `DEMO_ACCESS`.
 - CNPJ `IN_USE` ou `UNAVAILABLE`: gera solicitacao indisponivel e nao cria
   empresa raiz.
-- Se a verificacao em duas etapas for aceita e o e-mail/telefone informado
-  bater com o contato comercial vinculado ao CNPJ, a empresa raiz e liberada
-  imediatamente.
-- Se a verificacao for recusada, ou nao bater com o contato comercial, a
+- Se a verificacao em duas etapas for aceita, o usuario precisa pedir um codigo
+  por e-mail/telefone previamente vinculado ao CNPJ e enviar o codigo de 6
+  digitos antes do vencimento.
+- Se o codigo expirar, falhar ou nao for enviado, a
   solicitacao fica `PENDING_REVIEW` e registra
   `reviewNotificationEmail=diego.c94@yahoo.com`.
+- A liberacao imediata cria a empresa raiz, trava exclusao, ativa o primeiro
+  usuario administrador com MFA sugerido e grava trilha de auditoria.
 
-Nesta etapa o sistema registra o e-mail de analise, mas ainda nao envia e-mail
-real. O envio deve entrar via modulo de notificacoes/job para evitar SMTP solto
-em rota publica.
+O envio real ainda nao foi ligado a SMTP/SMS/WhatsApp. O sistema grava mensagens
+em `notification_outbox`; workers de entrega devem consumir essa fila.
 
 ## Dados salvos
 
@@ -42,6 +51,11 @@ Novas tabelas:
 - `cliente_onboarding_solicitacao`: trilha da solicitacao publica, incluindo
   status do CNPJ, tipo de contrato, cotas iniciais por perfil, canal de
   verificacao e data/hora de submissao.
+- `cliente_onboarding_cnpj_registry`: lista comercial administravel dos CNPJs
+  liberados, em uso, de teste ou indisponiveis.
+- `cliente_onboarding_verificacao`: desafios de codigo expirarivel, com hash,
+  tentativas e status.
+- `notification_outbox`: fila interna de mensagens a enviar.
 
 Campos opcionais `tenantRootCompanyId` foram adicionados aos cadastros
 principais: usuarios, prestadoras, clientes, contratos, pessoas, postos,
@@ -63,26 +77,27 @@ Regra-alvo para producao com clientes reais:
 - dados compartilhados, como personalizacao de calendario, devem gravar
   `tenantRootCompanyId` e log de inclusao, alteracao e exclusao.
 
-Estado atual: a base esta preparada para tenant, mas os modulos legados ainda
-nao bloqueiam por tenant porque os registros atuais podem estar com
-`tenantRootCompanyId=null`. Antes de ativar clientes reais, executar a fase de
-enforcement: vincular usuarios e dados existentes a uma empresa raiz e adicionar
-filtros obrigatorios nos services.
+Estado atual: o guard privilegiado exige empresa raiz para usuarios reais e os
+services centrais aplicam escopo por tenant em empresas, pessoas, contratos,
+postos, vinculos, ocorrencias, anexos, tags, agenda, network, dashboard e
+relatorios. O token local de desenvolvimento (`firebase-dev-local`) e a unica
+excecao sem tenant, apenas fora de producao.
 
 ## AWS e operacao
 
 - Manter `DEV_AUTH_BYPASS=false` e `PREVIEW_AUTH_BYPASS=false` em host publico.
 - Manter CORS restrito ao dominio publicado.
-- Antes de producao, colocar rate limit/WAF na rota publica de onboarding.
+- A rota publica tem rate limit em memoria para desenvolvimento/MVP. Em
+  producao, manter tambem WAF/Captcha/reverse proxy rate limit.
 - Nao expor raw contacts da lista comercial em resposta publica.
 - Nao deletar dados legados por migration; quando a base real for iniciada,
   limpar ou arquivar dados por processo controlado, com backup.
 
 ## Proximas entregas relacionadas
 
-1. Envio real de e-mail/SMS/WhatsApp para analise e verificacao.
-2. Tela interna para aprovar/negar solicitacoes pendentes.
-3. Criacao assistida do primeiro usuario administrador da empresa raiz.
-4. Vinculo do usuario Firebase ao `tenantRootCompanyId`.
-5. Enforcement de tenant em todos os services autenticados.
+1. Envio real de e-mail/SMS/WhatsApp a partir de `notification_outbox`.
+2. Administracao completa do registry comercial de CNPJs.
+3. Vinculo assistido do primeiro usuario Firebase ao usuario interno criado.
+4. Captcha/WAF em producao para o formulario publico.
+5. Consulta externa de CNPJ/Receita ou fornecedor equivalente.
 6. Personalizacao de calendario por empresa raiz com auditoria completa.
