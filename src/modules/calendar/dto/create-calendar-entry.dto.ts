@@ -120,10 +120,10 @@ export class CreateCalendarEntryDto {
   @IsOptional()
   @IsEnum(CalendarNotificationPolicy)
   notificationPolicy: CalendarNotificationPolicy =
-    CalendarNotificationPolicy.ON_DUE_DATE;
+    CalendarNotificationPolicy.ONE_BUSINESS_DAY_BEFORE;
 
   @ApiPropertyOptional({
-    default: 0,
+    default: 1,
     description:
       'Usado quando notificationPolicy = CUSTOM_BUSINESS_DAYS_BEFORE.'
   })
@@ -131,7 +131,7 @@ export class CreateCalendarEntryDto {
   @IsInt()
   @Min(0)
   @Max(30)
-  notificationOffsetBusinessDays = 0;
+  notificationOffsetBusinessDays = 1;
 
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
@@ -143,7 +143,7 @@ export class CreateCalendarEntryDto {
   @ApiPropertyOptional({
     enum: calendarNotificationChannels,
     isArray: true,
-    default: ['IN_APP']
+    default: ['IN_APP', 'EMAIL']
   })
   @IsOptional()
   @Transform(({ value }) =>

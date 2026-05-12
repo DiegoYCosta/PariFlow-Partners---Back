@@ -662,11 +662,11 @@ export class CalendarService {
   ): CalendarNotificationChannel[] {
     const normalized: CalendarNotificationChannel[] = channels?.length
       ? channels
-      : ['IN_APP'];
+      : ['IN_APP', 'EMAIL'];
     const filtered = normalized.filter((channel): channel is CalendarNotificationChannel =>
       calendarNotificationChannels.includes(channel)
     );
-    return filtered.length > 0 ? filtered : ['IN_APP'];
+    return filtered.length > 0 ? filtered : ['IN_APP', 'EMAIL'];
   }
 
   private async resolveAuthenticatedUserId(userPublicId: string): Promise<bigint> {

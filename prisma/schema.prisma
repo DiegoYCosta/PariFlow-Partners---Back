@@ -618,8 +618,8 @@ model CalendarEntry {
   isAllDay                       Boolean                    @default(false)
   businessDayPolicy              CalendarBusinessDayPolicy  @default(ALLOW_NON_BUSINESS_DAY)
   holidayRegionCode              String?                    @db.VarChar(40)
-  notificationPolicy             CalendarNotificationPolicy @default(ON_DUE_DATE)
-  notificationOffsetBusinessDays Int                        @default(0)
+  notificationPolicy             CalendarNotificationPolicy @default(ONE_BUSINESS_DAY_BEFORE)
+  notificationOffsetBusinessDays Int                        @default(1)
   notificationTime               String                     @default("09:00") @db.VarChar(5)
   notificationScheduledAt        DateTime?
   notificationChannelsJson       Json?

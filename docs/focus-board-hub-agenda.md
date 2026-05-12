@@ -5,11 +5,21 @@ Partners. O app FocusBoard antigo continua separado; o hub novo reaproveita
 os contratos existentes do PariFlow para evitar dependencia visual/tecnica
 externa e reduzir risco de regressao.
 
+Atualizacao de shell: a Focus Board e um componente persistente do layout CRM,
+fixado no canto superior direito em modo acoplado. Ela nao e recriada ao trocar
+de pagina; o estado fica em um controlador de shell. O usuario tambem pode
+desacoplar o componente para uma area de pagina inteira, usando os mesmos
+dados e o mesmo colaborador selecionado.
+
+O menu de usuario do topo abre `Perfis e configuracoes` como popup com abas de
+perfil, conta, seguranca, personalizacao, contatos e calendario. A aba
+calendario, por enquanto, e apenas visual e nao cria compromissos.
+
 ## Objetivo
 
 O hub do colaborador substitui a ideia de cards aleatorios por um painel
-contextual dentro da ficha de pessoas. Ele mostra somente conteudo que o
-backend ja liberou para a sessao atual:
+contextual permanente. Ele mostra somente conteudo que o backend ja liberou
+para a sessao atual:
 
 - lembretes e compromissos vinculados ao colaborador;
 - previews de documentos e anexos autorizados;
@@ -18,14 +28,21 @@ backend ja liberou para a sessao atual:
 
 ## Processo atual
 
-1. O front abre a ficha em `PeopleWorkspace`.
-2. A camada `people_api_data.dart` carrega pessoa, vinculos, ocorrencias,
+1. O shell CRM cria uma unica instancia do controlador persistente da Focus
+   Board.
+2. O controlador carrega dados por `people_api_data.dart` e mantem o estado
+   entre mudancas de pagina.
+3. A camada `people_api_data.dart` carrega pessoa, vinculos, ocorrencias,
    anexos, tags e agenda.
-3. Anexos e tags continuam vindo dos endpoints existentes, com a ACL aplicada
+4. Anexos e tags continuam vindo dos endpoints existentes, com a ACL aplicada
    no backend antes de chegar ao Flutter.
-4. O painel `Hub do colaborador` renderiza apenas os itens recebidos.
-5. O botao `Lembrete` cria um item em `POST /api/v1/agenda`.
-6. Cancelamentos usam `DELETE /api/v1/agenda/:publicId`, que muda status para
+5. O componente acoplado fica aberto no canto superior direito do shell.
+6. Ao navegar na ficha de pessoas, `PeopleWorkspace` informa o colaborador
+   selecionado ao controlador global, sem recarregar o componente.
+7. O usuario pode desacoplar a Focus Board para uma pagina propria e acoplar de
+   volta sem perder o estado.
+8. O botao `Lembrete` cria um item em `POST /api/v1/agenda`.
+9. Cancelamentos usam `DELETE /api/v1/agenda/:publicId`, que muda status para
    `CANCELED` e preserva historico.
 
 Nenhum fluxo novo deve usar ID numerico no front. A troca entre front e API
@@ -59,6 +76,12 @@ Politicas suportadas:
 - `SAME_DAY_OR_PREVIOUS_BUSINESS_DAY`: notifica no dia se for util, ou no dia
   util anterior quando cair em final de semana/feriado fixo;
 - `CUSTOM_BUSINESS_DAYS_BEFORE`: notifica N dias uteis antes.
+
+Default para novos itens quando o cliente nao enviar configuracao explicita:
+
+- politica: `ONE_BUSINESS_DAY_BEFORE`;
+- offset: `1`;
+- canais: `IN_APP` e `EMAIL`.
 
 O calculo atual considera finais de semana e feriados nacionais fixos do
 Brasil. Feriados regionais e moveis devem entrar no mesmo ponto de extensao,
@@ -133,6 +156,8 @@ Quando previews reais de arquivos entrarem:
 
 - Nao foi adicionada dependencia do pacote FocusBoard ao app principal.
 - O FocusBoard antigo permanece como referencia, nao como runtime.
+- A Focus Board esta componentizada no shell; nao fica presa a uma pagina
+  especifica e compartilha estado entre modo acoplado e desacoplado.
 - Endpoints existentes de pessoas, ocorrencias, anexos e tags nao mudaram.
 - ACL de anexos/tags continua sendo a fonte de verdade.
 - A agenda usa colunas novas com defaults, preservando linhas existentes.
