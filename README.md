@@ -2,7 +2,7 @@
 
 Backend NestJS/Fastify/Prisma do PariFlow Partners.
 
-Data de referencia: `2026-05-08`.
+Data de referencia: `2026-05-12`.
 
 ## Estado Atual
 
@@ -15,6 +15,8 @@ O que nao deve mais aparecer como pendencia inicial:
 - criar People/pessoas;
 - criar tags, anexos ou ocorrencias;
 - criar `GET /network/graph`;
+- criar endpoints basicos de agenda;
+- criar endpoint basico de relatorios;
 - criar CRUD basico dos modulos mestre;
 - habilitar mock/sample como fallback de runtime.
 
@@ -105,6 +107,19 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 - `POST /api/v1/anexos/submissions`
 - `GET /api/v1/network/graph`
 
+### Agenda, Relatorios e Notificacoes
+
+- `GET/POST/PATCH/DELETE /api/v1/agenda`
+- `POST /api/v1/relatorios/executar`
+- `notification_outbox` com worker SMTP para e-mail quando `SMTP_*` estiver
+  configurado
+
+A agenda atual suporta compromissos/lembretes, politicas de notificacao por dia
+util, canais de notificacao e relatorio `controls_calendar`. A proxima fase e
+calendario compartilhado por empresa raiz, feriados/dias nao uteis
+configuraveis, comunicados por grupo, classificacoes de lembrete e filtros
+avancados.
+
 As rotas `*/submissions` ficam desligadas por padrao com
 `PUBLIC_SUBMISSIONS_ENABLED=false`. Se forem habilitadas futuramente, producao
 exige `PUBLIC_SUBMISSION_TOKEN` e o cliente deve enviar
@@ -119,6 +134,8 @@ O front consome API real para:
 - People;
 - ocorrencias;
 - anexos;
+- agenda/lembretes;
+- relatorios;
 - Network.
 
 Regras mantidas:
@@ -208,8 +225,10 @@ Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
 3. Integrar o front ao refresh/logout quando a UX de sessao for fechada.
 4. Completar sensitive-session/step-up.
 5. Ligar storage privado e download rastreavel para anexos sensiveis.
-6. Implementar auditoria operacional e eventos de seguranca.
-7. Implementar relatorios e consultas executivas.
-8. Enriquecer detalhes de clientes/prestadoras quando o front precisar.
-9. Otimizar `GET /network/graph` com dados reais e regras de ACL.
-10. Definir backup/restore de banco.
+6. Implementar calendario compartilhado com feriados regionais, dias nao uteis,
+   comunicados por grupo, classificacoes e filtros avancados.
+7. Implementar auditoria operacional e eventos de seguranca.
+8. Evoluir relatorios e consultas executivas com exportacao e auditoria.
+9. Enriquecer detalhes de clientes/prestadoras quando o front precisar.
+10. Otimizar `GET /network/graph` com dados reais e regras de ACL.
+11. Definir backup/restore de banco.

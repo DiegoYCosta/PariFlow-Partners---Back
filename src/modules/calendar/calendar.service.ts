@@ -7,11 +7,16 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import {
+  AccessProfileCode,
   CalendarEntryKind,
   CalendarEntryStatus,
   CalendarEntryTargetType,
   CalendarNotificationPolicy,
-  Prisma
+  CalendarNonBusinessDay,
+  EmploymentLinkStatus,
+  NotificationOutboxChannel,
+  Prisma,
+  UserSystemStatus
 } from '@prisma/client';
 import {
   tenantCreateRelation,
@@ -25,7 +30,9 @@ import {
   CreateCalendarEntryDto,
   calendarNotificationChannels
 } from './dto/create-calendar-entry.dto';
+import { CreateCalendarNonBusinessDayDto } from './dto/create-calendar-non-business-day.dto';
 import { ListCalendarEntriesQueryDto } from './dto/list-calendar-entries-query.dto';
+import { ListCalendarNonBusinessDaysQueryDto } from './dto/list-calendar-non-business-days-query.dto';
 import { UpdateCalendarEntryDto } from './dto/update-calendar-entry.dto';
 
 const calendarEntryInclude = {
@@ -69,6 +76,11 @@ interface CalendarTargetRelations {
   positionId?: bigint;
 }
 
+interface CalendarBusinessDaySet {
+  exact: Set<string>;
+  annual: Set<string>;
+}
+
 @Injectable()
 export class CalendarService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -96,6 +108,74 @@ export class CalendarService {
       });
     }
 
+    if (query.providerCompanyPublicId) {
+      and.push({
+        OR: [
+          { providerCompany: { publicId: query.providerCompanyPublicId } },
+          {
+            contract: {
+              providerCompany: { publicId: query.providerCompanyPublicId }
+            }
+          },
+          {
+            employmentLink: {
+              providerCompany: { publicId: query.providerCompanyPublicId }
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.clientCompanyPublicId) {
+      and.push({
+        OR: [
+          { clientCompany: { publicId: query.clientCompanyPublicId } },
+          {
+            contract: {
+              clientCompany: { publicId: query.clientCompanyPublicId }
+            }
+          },
+          {
+            employmentLink: {
+              contract: {
+                clientCompany: { publicId: query.clientCompanyPublicId }
+              }
+            }
+          }
+        ]
+      });
+    }
+
+    if (query.employmentLinkPublicId) {
+      and.push({
+        employmentLink: { publicId: query.employmentLinkPublicId }
+      });
+    }
+
+    if (query.positionPublicId) {
+      and.push({
+        OR: [
+          { position: { publicId: query.positionPublicId } },
+          { employmentLink: { position: { publicId: query.positionPublicId } } }
+        ]
+      });
+    }
+
+    if (query.contractTypePublicId) {
+      and.push({
+        OR: [
+          { contract: { contractType: { publicId: query.contractTypePublicId } } },
+          {
+            employmentLink: {
+              contract: {
+                contractType: { publicId: query.contractTypePublicId }
+              }
+            }
+          }
+        ]
+      });
+    }
+
     if (query.kind) {
       and.push({ kind: query.kind });
     }
@@ -104,9 +184,31 @@ export class CalendarService {
       and.push({ status: query.status });
     }
 
+    if (query.category) {
+      and.push({ category: query.category });
+    }
+
+    if (query.recurrenceRule) {
+      and.push({ recurrenceRule: query.recurrenceRule });
+    }
+
     const startsAt = this.dateFilter(query.startsAtFrom, query.startsAtTo);
     if (startsAt) {
       and.push({ startsAt });
+    }
+
+    const createdAt = this.dateFilter(query.createdAtFrom, query.createdAtTo);
+    if (createdAt) {
+      and.push({ createdAt });
+    }
+
+    if (!query.includeDismissed) {
+      and.push({
+        OR: [
+          { employmentLinkId: null },
+          { employmentLink: { status: { not: EmploymentLinkStatus.DISMISSED } } }
+        ]
+      });
     }
 
     const items = await this.prisma.calendarEntry.findMany({
@@ -138,12 +240,18 @@ export class CalendarService {
     const notificationChannels = this.normalizeChannels(
       dto.notificationChannels
     );
+    const nonBusinessDays = await this.loadNonBusinessDayKeys(
+      actor,
+      startsAt,
+      dto.holidayRegionCode
+    );
     const notificationScheduledAt = this.calculateNotificationScheduledAt({
       startsAt,
       policy: dto.notificationPolicy,
       offsetBusinessDays: dto.notificationOffsetBusinessDays,
       notificationTime: dto.notificationTime,
-      holidayRegionCode: dto.holidayRegionCode
+      holidayRegionCode: dto.holidayRegionCode,
+      nonBusinessDays
     });
 
     const created = await this.prisma.calendarEntry.create({
@@ -154,6 +262,9 @@ export class CalendarService {
         status: dto.status,
         priority: dto.priority,
         targetType: relations.targetType,
+        category: this.nullIfEmpty(dto.category),
+        recurrenceRule: this.recurrenceRuleValue(dto.recurrenceRule),
+        audienceJson: this.audienceJson(dto),
         title: dto.title,
         description: this.nullIfEmpty(dto.description),
         startsAt,
@@ -198,6 +309,8 @@ export class CalendarService {
       created.publicId,
       `Criou item de agenda ${created.title}.`
     );
+
+    await this.queueAudienceNotifications(created, dto, notificationChannels);
 
     return this.mapEntry(created, actor);
   }
@@ -244,13 +357,22 @@ export class CalendarService {
       dto.holidayRegionCode === undefined
         ? current.holidayRegionCode
         : this.nullIfEmpty(dto.holidayRegionCode);
+    const nonBusinessDays = await this.loadNonBusinessDayKeys(
+      actor,
+      startsAt,
+      holidayRegionCode
+    );
     const notificationScheduledAt = this.calculateNotificationScheduledAt({
       startsAt,
       policy: notificationPolicy,
       offsetBusinessDays: notificationOffsetBusinessDays,
       notificationTime,
-      holidayRegionCode
+      holidayRegionCode,
+      nonBusinessDays
     });
+    const shouldUpdateAudience =
+      dto.audienceProfileCodes !== undefined ||
+      dto.audienceContractTypePublicIds !== undefined;
 
     const updated = await this.prisma.calendarEntry.update({
       where: { id: current.id },
@@ -262,6 +384,13 @@ export class CalendarService {
         ...(dto.description !== undefined
           ? { description: this.nullIfEmpty(dto.description) }
           : {}),
+        ...(dto.category !== undefined
+          ? { category: this.nullIfEmpty(dto.category) }
+          : {}),
+        ...(dto.recurrenceRule !== undefined
+          ? { recurrenceRule: this.recurrenceRuleValue(dto.recurrenceRule) }
+          : {}),
+        ...(shouldUpdateAudience ? { audienceJson: this.audienceJson(dto) } : {}),
         startsAt,
         endsAt,
         ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
@@ -332,6 +461,105 @@ export class CalendarService {
     );
 
     return this.mapEntry(canceled, actor);
+  }
+
+  async listNonBusinessDays(
+    query: ListCalendarNonBusinessDaysQueryDto,
+    actor: AuthTokenPayload
+  ) {
+    this.prisma.assertConfigured();
+
+    const and: Prisma.CalendarNonBusinessDayWhereInput[] = [];
+    if (!query.includeInactive) {
+      and.push({ active: true });
+    }
+    if (query.regionCode) {
+      and.push({
+        OR: [{ regionCode: null }, { regionCode: query.regionCode }]
+      });
+    }
+
+    const date = this.dateFilter(query.from, query.to);
+    if (date) {
+      and.push({
+        OR: [{ date }, { isRecurringYearly: true }]
+      });
+    }
+
+    const items = await this.prisma.calendarNonBusinessDay.findMany({
+      where: tenantWhere(actor, and.length > 0 ? { AND: and } : {}),
+      orderBy: [{ date: 'asc' }, { name: 'asc' }],
+      take: 200
+    });
+
+    return {
+      items: items.map((item) => this.mapNonBusinessDay(item)),
+      meta: {
+        total: items.length,
+        note: 'Dias nao uteis entram no calculo de notificacoes em dias uteis.'
+      }
+    };
+  }
+
+  async createNonBusinessDay(
+    dto: CreateCalendarNonBusinessDayDto,
+    actor: AuthTokenPayload
+  ) {
+    this.prisma.assertConfigured();
+
+    const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
+    const date = this.parseDateOnlyBoundary(dto.date, false);
+    const created = await this.prisma.calendarNonBusinessDay.create({
+      data: {
+        publicId: createPublicId('dnu'),
+        tenantRootCompany: tenantCreateRelation(actor),
+        date,
+        name: dto.name,
+        scope: dto.scope,
+        regionCode: this.nullIfEmpty(dto.regionCode),
+        cityName: this.nullIfEmpty(dto.cityName),
+        isRecurringYearly: dto.isRecurringYearly,
+        notes: this.nullIfEmpty(dto.notes),
+        createdByUserSystem: { connect: { id: actorUserId } }
+      }
+    });
+
+    await this.writeAudit(
+      actorUserId,
+      'create_non_business_day',
+      created.publicId,
+      `Criou dia nao util ${created.name}.`
+    );
+
+    return this.mapNonBusinessDay(created);
+  }
+
+  async deactivateNonBusinessDay(publicId: string, actor: AuthTokenPayload) {
+    this.prisma.assertConfigured();
+
+    const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
+    const current = await this.prisma.calendarNonBusinessDay.findFirst({
+      where: tenantWhere(actor, { publicId }),
+      select: { id: true }
+    });
+
+    if (!current) {
+      throw new NotFoundException('Dia nao util nao encontrado.');
+    }
+
+    const updated = await this.prisma.calendarNonBusinessDay.update({
+      where: { id: current.id },
+      data: { active: false }
+    });
+
+    await this.writeAudit(
+      actorUserId,
+      'deactivate_non_business_day',
+      updated.publicId,
+      `Desativou dia nao util ${updated.name}.`
+    );
+
+    return this.mapNonBusinessDay(updated);
   }
 
   private async ensureEntry(

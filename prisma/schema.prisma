@@ -112,6 +112,7 @@ enum SecurityEventType {
 enum CalendarEntryKind {
   REMINDER
   APPOINTMENT
+  NOTICE
 }
 
 enum CalendarEntryStatus {
@@ -247,6 +248,7 @@ model TenantRootCompany {
   securityEvents        SecurityEvent[]              @relation("SecurityEventTenantRootCompany")
   auditLogs             AuditLog[]                   @relation("AuditLogTenantRootCompany")
   notificationOutbox    NotificationOutbox[]         @relation("NotificationOutboxTenantRootCompany")
+  nonBusinessDays       CalendarNonBusinessDay[]     @relation("CalendarNonBusinessDayTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
@@ -386,6 +388,7 @@ model UserSystem {
   clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
   createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
   assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
+  createdNonBusinessDays  CalendarNonBusinessDay[] @relation("CalendarNonBusinessDayCreatedBy")
 
   @@index([tenantRootCompanyId])
   @@index([providerCompanyId])
@@ -844,6 +847,9 @@ model CalendarEntry {
   status                         CalendarEntryStatus        @default(SCHEDULED)
   priority                       CalendarEntryPriority      @default(NORMAL)
   targetType                     CalendarEntryTargetType    @default(GENERAL)
+  category                       String?                    @db.VarChar(80)
+  recurrenceRule                 String?                    @db.VarChar(80)
+  audienceJson                   Json?
   title                          String                     @db.VarChar(180)
   description                    String?                    @db.Text
   startsAt                       DateTime
@@ -892,6 +898,29 @@ model CalendarEntry {
   @@index([assignedToUserSystemId, startsAt])
   @@index([notificationScheduledAt])
   @@map("agenda_item")
+}
+
+model CalendarNonBusinessDay {
+  id                    BigInt             @id @default(autoincrement())
+  publicId              String             @unique @db.VarChar(26)
+  tenantRootCompanyId   BigInt?
+  date                  DateTime
+  name                  String             @db.VarChar(160)
+  scope                 String             @default("CUSTOM") @db.VarChar(40)
+  regionCode            String?            @db.VarChar(40)
+  cityName              String?            @db.VarChar(120)
+  isRecurringYearly     Boolean            @default(false)
+  active                Boolean            @default(true)
+  notes                 String?            @db.Text
+  createdByUserSystemId BigInt?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  tenantRootCompany     TenantRootCompany? @relation("CalendarNonBusinessDayTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  createdByUserSystem   UserSystem?        @relation("CalendarNonBusinessDayCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+
+  @@index([tenantRootCompanyId, date, active])
+  @@index([tenantRootCompanyId, regionCode, active])
+  @@map("agenda_dia_nao_util")
 }
 
 model RefreshToken {

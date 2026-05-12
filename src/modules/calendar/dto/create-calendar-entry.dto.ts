@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  AccessProfileCode,
   CalendarBusinessDayPolicy,
   CalendarEntryKind,
   CalendarEntryPriority,
@@ -57,6 +58,31 @@ export class CreateCalendarEntryDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiPropertyOptional({
+    example: 'PROBATION_END',
+    description:
+      'Classificacao livre para filtrar a agenda: aniversario, experiencia, recado, feriado etc.'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @ApiPropertyOptional({
+    example: 'YEARLY',
+    description:
+      'Regra simples de repeticao. Use YEARLY para itens anuais ainda vigentes.'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value
+  )
+  @IsIn(['NONE', 'YEARLY'])
+  recurrenceRule?: 'NONE' | 'YEARLY';
 
   @ApiProperty({
     example: '2026-05-01',
@@ -158,6 +184,47 @@ export class CreateCalendarEntryDto {
   @ArrayUnique()
   @IsIn(calendarNotificationChannels, { each: true })
   notificationChannels?: CalendarNotificationChannel[];
+
+  @ApiPropertyOptional({
+    enum: AccessProfileCode,
+    isArray: true,
+    description:
+      'Perfis que receberao recados de agenda por canais configurados, como RH ou Operacoes.'
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value
+          .map((item) =>
+            typeof item === 'string' ? item.trim().toUpperCase() : item
+          )
+          .filter((item) => typeof item === 'string' && item.length > 0)
+      : value
+  )
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ArrayUnique()
+  @IsEnum(AccessProfileCode, { each: true })
+  audienceProfileCodes?: AccessProfileCode[];
+
+  @ApiPropertyOptional({
+    isArray: true,
+    example: ['tct_01hxyzabc123def456ghi789']
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value
+          .map((item) => (typeof item === 'string' ? item.trim() : item))
+          .filter((item) => typeof item === 'string' && item.length > 0)
+      : value
+  )
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MaxLength(26, { each: true })
+  audienceContractTypePublicIds?: string[];
 
   @ApiPropertyOptional({ example: 'pes_01hxyzabc123def456ghi789' })
   @IsOptional()
