@@ -6,7 +6,8 @@ param(
   [int]$Port = 3000,
   [string]$DatabaseUrl = 'mysql://pariflow_app:PariFlowLocal%212026@127.0.0.1:3308/pariflow_partners',
   [switch]$SkipDatabaseSetup,
-  [switch]$SkipMigrations
+  [switch]$SkipMigrations,
+  [switch]$EnableNotificationWorker
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,7 @@ $env:PORT = [string]$Port
 $env:DATABASE_URL = $DatabaseUrl
 $env:DEV_AUTH_BYPASS = 'true'
 $env:PREVIEW_AUTH_BYPASS = 'false'
+$env:NOTIFICATION_OUTBOX_WORKER_ENABLED = if ($EnableNotificationWorker) { 'true' } else { 'false' }
 
 $portInUse = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
   Select-Object -First 1
@@ -39,5 +41,6 @@ if (-not $SkipMigrations) {
 Write-Host "PariFlow back local: http://$ListenHost`:$Port"
 Write-Host 'Banco local do projeto: 127.0.0.1:3308/pariflow_partners'
 Write-Host 'DEV_AUTH_BYPASS=true somente neste processo local.'
+Write-Host "NOTIFICATION_OUTBOX_WORKER_ENABLED=$($env:NOTIFICATION_OUTBOX_WORKER_ENABLED)"
 
 npm.cmd run dev

@@ -183,6 +183,10 @@ Swagger local:
 http://localhost:3000/api/docs
 ```
 
+Para testar localmente com uma copia de um banco real, use o fluxo seguro em
+`docs/local-real-db-sync.md`. Ele restaura os dados somente no MySQL local e nao
+aponta o backend local diretamente para producao.
+
 ## Firebase Admin e Usuarios Reais
 
 Para liberar login online:

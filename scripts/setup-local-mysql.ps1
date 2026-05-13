@@ -1,20 +1,85 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$mysqlBin = 'D:\Program Files\MySQL\MySQL Server 8.0\bin'
-$mysqld = Join-Path $mysqlBin 'mysqld.exe'
-$mysql = Join-Path $mysqlBin 'mysql.exe'
+$mysqlBin = 'C:\Program Files\MySQL\MySQL Server 8.0\bin'
+$confDir = Join-Path $root '.local\mysql\conf'
 $config = Join-Path $root '.local\mysql\conf\my.ini'
 $initFile = Join-Path $root '.local\mysql\conf\init-dev.sql'
 $dataDir = Join-Path $root '.local\mysql\data'
+$logDir = Join-Path $root '.local\mysql\logs'
+$runDir = Join-Path $root '.local\mysql\run'
 $errorLog = Join-Path $root '.local\mysql\logs\mysql-error.log'
+$pidFile = Join-Path $root '.local\mysql\run\mysql.pid'
 $password = 'PariFlowLocal!2026'
 $database = 'pariflow_partners'
 $appUser = 'pariflow_app'
 
-if (-not (Test-Path $mysqld)) {
-  throw "mysqld.exe nao encontrado em $mysqld"
+function Resolve-MySqlTool {
+  param([string]$Name)
+
+  $candidateDirectories = @(
+    $mysqlBin,
+    'D:\Program Files\MySQL\MySQL Server 8.0\bin',
+    'C:\Program Files\MySQL\MySQL Server 8.0\bin'
+  )
+
+  foreach ($directory in $candidateDirectories) {
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+      continue
+    }
+
+    $candidate = Join-Path $directory $Name
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      return $candidate
+    }
+  }
+
+  $command = Get-Command $Name -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+
+  throw "$Name nao encontrado. Instale MySQL Server 8.0 ou adicione o binario ao PATH."
 }
+
+$mysqld = Resolve-MySqlTool -Name 'mysqld.exe'
+$mysql = Resolve-MySqlTool -Name 'mysql.exe'
+
+New-Item -ItemType Directory -Force -Path $confDir, $dataDir, $logDir, $runDir | Out-Null
+
+if (-not (Test-Path $config)) {
+  $mysqlDataDir = $dataDir.Replace('\', '/')
+  $mysqlErrorLog = $errorLog.Replace('\', '/')
+  $mysqlPidFile = $pidFile.Replace('\', '/')
+
+  @"
+[mysqld]
+port=3308
+bind-address=127.0.0.1
+datadir=$mysqlDataDir
+log-error=$mysqlErrorLog
+pid-file=$mysqlPidFile
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+[client]
+default-character-set=utf8mb4
+"@ | Set-Content -Path $config -Encoding ascii
+}
+
+$escapedPassword = $password.Replace("'", "''")
+$quotedDatabase = "``$database``"
+@"
+CREATE DATABASE IF NOT EXISTS $quotedDatabase CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$appUser'@'127.0.0.1' IDENTIFIED BY '$escapedPassword';
+CREATE USER IF NOT EXISTS '$appUser'@'localhost' IDENTIFIED BY '$escapedPassword';
+ALTER USER '$appUser'@'127.0.0.1' IDENTIFIED BY '$escapedPassword';
+ALTER USER '$appUser'@'localhost' IDENTIFIED BY '$escapedPassword';
+GRANT ALL PRIVILEGES ON $quotedDatabase.* TO '$appUser'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON $quotedDatabase.* TO '$appUser'@'localhost';
+FLUSH PRIVILEGES;
+"@ | Set-Content -Path $initFile -Encoding ascii
 
 $systemTables = Join-Path $dataDir 'mysql'
 
