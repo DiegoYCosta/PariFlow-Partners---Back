@@ -220,12 +220,20 @@ export class NetworkService {
         detailSnapshot: {
           kind: 'root_company',
           summary: `Prestadora ${provider.legalName} no recorte relacional atual.`,
+          activeClientCompanies: this.countActiveClientCompaniesForProvider(
+            contracts,
+            provider.id
+          ),
           activeContracts: contracts.filter(
             (item) =>
               item.providerCompanyId === provider.id &&
               this.contractGraphStatus(item) === 'active'
           ).length,
           activeEmployees: this.countActiveEmployeesForProvider(
+            contracts,
+            provider.id
+          ),
+          historicalEmployees: this.countHistoricalEmployeesForProvider(
             contracts,
             provider.id
           ),
@@ -253,6 +261,10 @@ export class NetworkService {
               item.clientCompanyId === client.id &&
               this.contractGraphStatus(item) === 'active'
           ).length,
+          activeEmployees: this.countActiveEmployeesForClient(
+            contracts,
+            client.id
+          ),
           cta: {
             label: 'Abrir cliente',
             targetPublicId: client.publicId
@@ -347,6 +359,7 @@ export class NetworkService {
             service: position.service.name,
             shift: position.shift,
             schedule: position.schedule,
+            scale: position.schedule,
             location: position.location,
             statusLabel: position.status
           }
@@ -397,6 +410,7 @@ export class NetworkService {
               clientCompany: client.name,
               contract: contract.publicId,
               providerCompany: provider.tradeName ?? provider.legalName,
+              position: position.name,
               statusLabel: link.status,
               startDate: this.dateLabel(link.startsAt),
               endDate: this.dateLabel(link.endsAt ?? link.dismissal?.dismissedAt),
@@ -609,6 +623,24 @@ export class NetworkService {
     return link.status === EmploymentLinkStatus.ACTIVE && !link.endsAt && !link.dismissal;
   }
 
+  private countActiveClientCompaniesForProvider(
+    contracts: GraphContract[],
+    providerCompanyId: bigint
+  ): number {
+    const clients = new Set<string>();
+
+    for (const contract of contracts) {
+      if (
+        contract.providerCompanyId === providerCompanyId &&
+        this.contractGraphStatus(contract) === 'active'
+      ) {
+        clients.add(contract.clientCompany.publicId);
+      }
+    }
+
+    return clients.size;
+  }
+
   private countActiveEmployeesForProvider(
     contracts: GraphContract[],
     providerCompanyId: bigint
@@ -617,6 +649,52 @@ export class NetworkService {
 
     for (const contract of contracts) {
       if (contract.providerCompanyId !== providerCompanyId) {
+        continue;
+      }
+
+      for (const position of contract.positions) {
+        for (const link of position.links) {
+          if (this.isActiveLink(link)) {
+            people.add(link.person.publicId);
+          }
+        }
+      }
+    }
+
+    return people.size;
+  }
+
+  private countHistoricalEmployeesForProvider(
+    contracts: GraphContract[],
+    providerCompanyId: bigint
+  ): number {
+    const people = new Set<string>();
+
+    for (const contract of contracts) {
+      if (contract.providerCompanyId !== providerCompanyId) {
+        continue;
+      }
+
+      for (const position of contract.positions) {
+        for (const link of position.links) {
+          if (!this.isActiveLink(link)) {
+            people.add(link.person.publicId);
+          }
+        }
+      }
+    }
+
+    return people.size;
+  }
+
+  private countActiveEmployeesForClient(
+    contracts: GraphContract[],
+    clientCompanyId: bigint
+  ): number {
+    const people = new Set<string>();
+
+    for (const contract of contracts) {
+      if (contract.clientCompanyId !== clientCompanyId) {
         continue;
       }
 

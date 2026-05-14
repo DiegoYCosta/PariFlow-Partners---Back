@@ -334,6 +334,15 @@ export class AttachmentsService {
       await this.assertVerifiedSensitiveSession(actor, SensitiveSessionLevel.SENSITIVE);
     }
 
+    if (
+      disposition === 'download' &&
+      !actor.capabilities.canDownloadAttachments
+    ) {
+      throw new ForbiddenException(
+        'Usuario sem permissao para download auditavel de anexos.'
+      );
+    }
+
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     const object = this.resolvePrivateObject(item.storagePath);
     const signedUrl = object
@@ -358,7 +367,7 @@ export class AttachmentsService {
       fileName: item.fileName,
       mimeType: item.mimeType,
       disposition,
-      source: object ? 'S3_PRIVATE' : item.externalLink ? 'EXTERNAL_LINK' : 'METADATA_ONLY',
+      source: this.accessSourceForAttachment(item),
       signedUrl: signedUrl ?? null,
       expiresAt,
       requiresSensitiveSession: this.requiresSensitiveSession(item)
@@ -659,6 +668,16 @@ export class AttachmentsService {
     );
   }
 
+  private accessSourceForAttachment(item: AttachmentWithRelations): string {
+    if (item.storagePath) {
+      return 'S3_PRIVATE';
+    }
+    if (item.externalLink) {
+      return 'EXTERNAL_LINK';
+    }
+    return 'METADATA_ONLY';
+  }
+
   private resolvePrivateObject(storagePath?: string | null):
     | { bucket: string; key: string }
     | undefined {
@@ -716,6 +735,7 @@ export class AttachmentsService {
   private mapAttachment(item: AttachmentWithRelations, actor?: AuthTokenPayload) {
     const canView = actor ? this.canReadAttachment(item, actor) : false;
     const canManage = actor ? this.canManageAttachment(item, actor) : false;
+    const accessSource = this.accessSourceForAttachment(item);
 
     return {
       publicId: item.publicId,
@@ -726,12 +746,14 @@ export class AttachmentsService {
       classification: item.classification,
       fileName: item.fileName,
       mimeType: item.mimeType,
-      storagePath: item.storagePath,
       externalLink: item.externalLink,
       physicalLocation: item.physicalLocation,
+      accessSource,
+      hasPrivateStorage: accessSource === 'S3_PRIVATE',
       visibleInExecutive: item.visibleInExecutive,
       visibleInContext: item.visibleInContext,
       requiresConfirmation: item.requiresConfirmation,
+      requiresSensitiveSession: this.requiresSensitiveSession(item),
       version: item.version,
       status: item.status,
       allowedGroupKeys: item.audienceGroups.map((entry) => entry.groupKey),
@@ -739,7 +761,8 @@ export class AttachmentsService {
         (entry) => entry.userSystem.publicId
       ),
       canView,
-      canDownload: canView,
+      canDownload:
+        canView && (actor?.capabilities.canDownloadAttachments ?? false),
       canEdit: canManage,
       canDelete: canManage,
       canManage,
