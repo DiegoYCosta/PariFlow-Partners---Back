@@ -18,6 +18,13 @@ export class RequestCompanyAccessDto {
   @Matches(/^\d{14}$/)
   cnpj!: string;
 
+  @ApiProperty({ example: "PariFlow Operacoes Ltda" })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(180)
+  companyName!: string;
+
   @ApiProperty({ example: "12345678901" })
   @Transform(digitsOnly)
   @IsString()
@@ -34,6 +41,13 @@ export class RequestCompanyAccessDto {
   @IsNotEmpty()
   @MaxLength(160)
   requesterName!: string;
+
+  @ApiProperty({ example: "Responsavel operacional" })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  requesterRole!: string;
 
   @ApiPropertyOptional({ example: "maria@empresa.com" })
   @IsOptional()

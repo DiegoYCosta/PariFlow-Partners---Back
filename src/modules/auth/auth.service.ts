@@ -1,4 +1,9 @@
-import { Injectable, Inject, UnauthorizedException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Inject,
+  UnauthorizedException,
+} from "@nestjs/common";
 import {
   AccessProfileCode,
   NotificationOutboxChannel,
@@ -8,6 +13,7 @@ import {
   SensitiveAudienceGroup,
   SensitiveSessionLevel,
   SensitiveSessionStatus,
+  TenantRootCompanyStatus,
   UserSystemStatus,
 } from "@prisma/client";
 import { JwtService } from "@nestjs/jwt";
@@ -17,8 +23,10 @@ import { databaseUrl, env } from "../../config/env";
 import { PrismaService } from "../../infra/database/prisma.service";
 import { FirebaseAdminService } from "../../infra/firebase/firebase-admin.service";
 import { RequestCompanyAccessDto } from "./dto/request-company-access.dto";
+import { SelectCompanyContextDto } from "./dto/select-company-context.dto";
 import { SessionExchangeDto } from "./dto/session-exchange.dto";
 import { StartSensitiveSessionDto } from "./dto/start-sensitive-session.dto";
+import { UpdateCalendarPreferencesDto } from "./dto/update-calendar-preferences.dto";
 import { UpdateCurrentUserDto } from "./dto/update-current-user.dto";
 import { VerifySensitiveSessionDto } from "./dto/verify-sensitive-session.dto";
 import {
@@ -42,6 +50,7 @@ type SessionUser = SessionIdentity & {
 type SessionSnapshot = {
   user: SessionUser;
   userSystemId?: bigint;
+  tenantRootCompanyId?: bigint | null;
   profiles: string[];
   audienceGroups: SensitiveAudienceGroup[];
   capabilities: AuthCapabilities;
@@ -119,6 +128,7 @@ export class AuthService {
       },
       include: {
         userSystem: true,
+        tenantRootCompany: true,
       },
     });
 
@@ -146,17 +156,20 @@ export class AuthService {
 
     const sessionSnapshot = await this.resolvePersistedSessionSnapshot(
       storedToken.userSystem,
+      storedToken.tenantRootCompany?.publicId ?? null,
     );
     const accessToken = await this.signAccessToken(sessionSnapshot);
     const nextRefreshToken = await this.issueRefreshToken(
       storedToken.userSystemId,
       requestContext,
+      storedToken.tenantRootCompanyId,
     );
     await this.recordSecurityEvent(
       storedToken.userSystemId,
       SecurityEventType.REFRESH_ROTATED,
       "Refresh token rotacionado e novo access token emitido.",
       requestContext,
+      storedToken.tenantRootCompanyId,
     );
 
     return this.buildSessionResponse(
@@ -217,6 +230,204 @@ export class AuthService {
     return this.getCurrentUser(payload);
   }
 
+  async getAccessContext(payload: AuthTokenPayload) {
+    this.prisma.assertConfigured();
+
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: payload.sub },
+      include: {
+        tenantRootCompany: true,
+        tenantAccesses: {
+          where: { active: true },
+          include: {
+            tenantRootCompany: true,
+            accessProfile: true,
+          },
+          orderBy: [{ approvedAt: "desc" }, { createdAt: "desc" }],
+        },
+        accessProfiles: {
+          include: { accessProfile: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        "Usuario autenticado nao foi encontrado para contexto de acesso.",
+      );
+    }
+
+    const recentRequests = await this.prisma.notificationOutbox.findMany({
+      where: {
+        queuedAt: {
+          gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        },
+      },
+      orderBy: { queuedAt: "desc" },
+      take: 250,
+    });
+
+    const documents = recentRequests
+      .filter((item) =>
+        this.isCompanyAccessRequestForUser(item.metadataJson, user.publicId),
+      )
+      .map((item) => this.mapCompanyAccessDocument(item));
+
+    const profiles = user.accessProfiles.map((profile) =>
+      this.mapProfileCode(profile.accessProfile.code),
+    );
+    const linkedCompanies = this.resolveLinkedCompaniesForUser(user);
+    const selectedCompany =
+      linkedCompanies.find(
+        (company) => company.publicId === payload.tenantRootCompany?.publicId,
+      ) ?? null;
+
+    return {
+      user: {
+        publicId: user.publicId,
+        name: user.name,
+        email: user.email,
+      },
+      selectedCompany,
+      linkedCompany: selectedCompany,
+      linkedCompanies,
+      accessProfiles: profiles,
+      audienceGroups: this.resolveAudienceGroupsFromProfiles(
+        user.accessProfiles,
+      ),
+      capabilities: this.buildCapabilities(user.accessProfiles),
+      documents,
+    };
+  }
+
+  async selectCompanyContext(
+    dto: SelectCompanyContextDto,
+    payload: AuthTokenPayload,
+    refreshToken?: string,
+    requestContext?: SessionRequestContext,
+  ) {
+    this.prisma.assertConfigured();
+
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: payload.sub },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        "Usuario autenticado nao foi encontrado para selecionar empresa.",
+      );
+    }
+
+    const access = await this.findApprovedTenantAccess(
+      user.id,
+      dto.tenantRootCompanyPublicId,
+    );
+    if (!access) {
+      await this.recordSecurityEvent(
+        user.id,
+        SecurityEventType.ACCESS_DENIED,
+        "Tentativa de selecionar empresa sem vinculo aprovado.",
+        requestContext,
+      );
+      throw new ForbiddenException(
+        "Vinculo com a empresa informada nao esta aprovado para este usuario.",
+      );
+    }
+
+    if (refreshToken) {
+      await this.prisma.refreshToken.updateMany({
+        where: {
+          tokenHash: hashRefreshToken(refreshToken),
+          userSystemId: user.id,
+          status: RefreshTokenStatus.ACTIVE,
+        },
+        data: {
+          status: RefreshTokenStatus.ROTATED,
+          rotatedAt: new Date(),
+        },
+      });
+    }
+
+    const sessionSnapshot = await this.resolvePersistedSessionSnapshot(
+      await this.prisma.userSystem.findUniqueOrThrow({
+        where: { id: user.id },
+      }),
+      access.tenantRootCompany.publicId,
+    );
+    const accessToken = await this.signAccessToken(sessionSnapshot);
+    const nextRefreshToken = await this.issueRefreshToken(
+      user.id,
+      requestContext,
+      access.tenantRootCompanyId,
+    );
+    await this.recordSecurityEvent(
+      user.id,
+      SecurityEventType.SESSION_EXCHANGED,
+      "Contexto de empresa selecionado e sessao escopada emitida.",
+      requestContext,
+      access.tenantRootCompanyId,
+    );
+
+    return this.buildSessionResponse(
+      sessionSnapshot,
+      accessToken,
+      nextRefreshToken,
+    );
+  }
+
+  async getCalendarPreferences(payload: AuthTokenPayload) {
+    this.prisma.assertConfigured();
+
+    const user = await this.findActiveUserForPreferences(payload);
+    const tenantKey = this.calendarPreferenceTenantKey(
+      payload.tenantRootCompany,
+    );
+    return {
+      tenantRootCompanyPublicId: payload.tenantRootCompany?.publicId ?? null,
+      preferences: this.calendarPreferencesForTenant(
+        user.preferencesJson,
+        tenantKey,
+      ),
+    };
+  }
+
+  async updateCalendarPreferences(
+    dto: UpdateCalendarPreferencesDto,
+    payload: AuthTokenPayload,
+  ) {
+    this.prisma.assertConfigured();
+
+    const user = await this.findActiveUserForPreferences(payload);
+    const tenantKey = this.calendarPreferenceTenantKey(
+      payload.tenantRootCompany,
+    );
+    const current = this.calendarPreferenceContainer(user.preferencesJson);
+    const currentCalendar =
+      this.calendarPreferencesForTenant(user.preferencesJson, tenantKey);
+    const nextCalendar = this.normalizeCalendarPreferences({
+      ...currentCalendar,
+      ...dto,
+    });
+    const byTenant = this.recordFromUnknown(current.calendarByTenant);
+    byTenant[tenantKey] = nextCalendar;
+
+    await this.prisma.userSystem.update({
+      where: { id: user.id },
+      data: {
+        preferencesJson: {
+          ...current,
+          calendarByTenant: byTenant,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      tenantRootCompanyPublicId: payload.tenantRootCompany?.publicId ?? null,
+      preferences: nextCalendar,
+    };
+  }
+
   async requestCompanyAccess(
     dto: RequestCompanyAccessDto,
     payload: AuthTokenPayload,
@@ -231,7 +442,6 @@ export class AuthService {
         publicId: true,
         email: true,
         name: true,
-        tenantRootCompanyId: true,
       },
     });
 
@@ -241,11 +451,26 @@ export class AuthService {
       );
     }
 
-    if (user.tenantRootCompanyId) {
-      return {
-        status: "ALREADY_LINKED",
-        message: "Usuario ja possui empresa vinculada para acesso.",
-      };
+    const requestedRootCompany = await this.prisma.tenantRootCompany.findUnique(
+      {
+        where: { cnpj: dto.cnpj },
+        select: { id: true, tradeName: true, legalName: true },
+      },
+    );
+    if (requestedRootCompany) {
+      const activeAccess = await this.prisma.userTenantAccess.findFirst({
+        where: {
+          userSystemId: user.id,
+          tenantRootCompanyId: requestedRootCompany.id,
+          active: true,
+        },
+      });
+      if (activeAccess) {
+        return {
+          status: "ALREADY_LINKED",
+          message: `Usuario ja possui vinculo aprovado com ${requestedRootCompany.tradeName || requestedRootCompany.legalName}.`,
+        };
+      }
     }
 
     const now = new Date();
@@ -312,7 +537,9 @@ export class AuthService {
       "Nova solicitacao de acesso a empresa.",
       "",
       `Usuario: ${user.name} (${user.email ?? "sem email"})`,
+      `Empresa informada: ${dto.companyName}`,
       `Solicitante: ${dto.requesterName}`,
+      `Funcao declarada: ${dto.requesterRole}`,
       `Contato: ${dto.requesterEmail ?? "sem email"} | ${dto.requesterPhone ?? "sem telefone"}`,
       `Documento do solicitante: ${dto.requesterDocument}`,
       `CNPJ solicitado: ${dto.cnpj}`,
@@ -335,8 +562,10 @@ export class AuthService {
           userPublicId: user.publicId,
           userEmail: user.email,
           cnpj: dto.cnpj,
+          companyName: dto.companyName,
           requesterDocument: dto.requesterDocument,
           requesterName: dto.requesterName,
+          requesterRole: dto.requesterRole,
           requesterEmail: dto.requesterEmail ?? null,
           requesterPhone: dto.requesterPhone ?? null,
           requestedAccessLevel: dto.requestedAccessLevel,
@@ -401,6 +630,9 @@ export class AuthService {
         "Usuario autenticado nao foi encontrado para sessao sensivel.",
       );
     }
+    const activeTenantRootCompanyId =
+      (await this.tenantRootCompanyIdFromPayload(payload)) ??
+      user.tenantRootCompanyId;
 
     const code = randomInt(100000, 1000000).toString();
     const publicId = createPublicId("sen");
@@ -426,7 +658,7 @@ export class AuthService {
     await this.prisma.notificationOutbox.create({
       data: {
         publicId: createPublicId("not"),
-        tenantRootCompanyId: user.tenantRootCompanyId,
+        tenantRootCompanyId: activeTenantRootCompanyId,
         channel: NotificationOutboxChannel.EMAIL,
         target: user.email,
         subject: "Codigo de sessao sensivel PariFlow Partners",
@@ -444,7 +676,7 @@ export class AuthService {
       SecurityEventType.SENSITIVE_SESSION_STARTED,
       `Sessao sensivel solicitada (${level}).`,
       requestContext,
-      user.tenantRootCompanyId,
+      activeTenantRootCompanyId,
     );
 
     return {
@@ -477,6 +709,9 @@ export class AuthService {
         "Usuario autenticado nao foi encontrado para validar sessao sensivel.",
       );
     }
+    const activeTenantRootCompanyId =
+      (await this.tenantRootCompanyIdFromPayload(payload)) ??
+      user.tenantRootCompanyId;
 
     const session = await this.prisma.sensitiveSession.findFirst({
       where: {
@@ -531,7 +766,7 @@ export class AuthService {
       SecurityEventType.SENSITIVE_SESSION_VERIFIED,
       `Sessao sensivel verificada (${verified.level}).`,
       requestContext,
-      user.tenantRootCompanyId,
+      activeTenantRootCompanyId,
     );
 
     return {
@@ -713,29 +948,61 @@ export class AuthService {
     email: string | null;
     addressJson?: Prisma.JsonValue | null;
     status: UserSystemStatus;
-  }): Promise<SessionSnapshot> {
+  }, selectedTenantRootCompanyPublicId?: string | null): Promise<SessionSnapshot> {
     if (persistedUser.status !== UserSystemStatus.ACTIVE) {
       throw new UnauthorizedException(
         "Usuario interno ainda nao esta ativo para acessar o sistema.",
       );
     }
 
-    const userWithTenant = await this.prisma.userSystem.findUnique({
+    const userWithAccess = await this.prisma.userSystem.findUnique({
       where: { id: persistedUser.id },
       include: {
         tenantRootCompany: true,
+        tenantAccesses: {
+          where: { active: true },
+          include: {
+            tenantRootCompany: true,
+            accessProfile: true,
+          },
+        },
+        accessProfiles: {
+          include: { accessProfile: true },
+        },
       },
     });
-    const profiles = await this.loadUserProfiles(persistedUser.id);
+    if (!userWithAccess) {
+      throw new UnauthorizedException(
+        "Usuario interno nao foi encontrado para montar sessao.",
+      );
+    }
+
+    const selectedAccess = selectedTenantRootCompanyPublicId
+      ? this.resolveSelectedTenantAccess(
+          userWithAccess,
+          selectedTenantRootCompanyPublicId,
+        )
+      : null;
+
+    if (selectedTenantRootCompanyPublicId && !selectedAccess) {
+      throw new ForbiddenException(
+        "Empresa selecionada nao esta aprovada para este usuario.",
+      );
+    }
+
+    const profiles =
+      selectedAccess?.accessProfile != null
+        ? [{ accessProfile: selectedAccess.accessProfile }]
+        : userWithAccess.accessProfiles;
     const capabilities = this.buildCapabilities(profiles);
     const audienceGroups = this.resolveAudienceGroupsFromProfiles(profiles);
-    const tenantRootCompany = userWithTenant?.tenantRootCompany
+    const tenantRootCompany = selectedAccess?.tenantRootCompany
       ? {
-          publicId: userWithTenant.tenantRootCompany.publicId,
-          tradeName: userWithTenant.tenantRootCompany.tradeName,
-          legalName: userWithTenant.tenantRootCompany.legalName,
-          cnpj: userWithTenant.tenantRootCompany.cnpj,
-          status: userWithTenant.tenantRootCompany.status,
+          publicId: selectedAccess.tenantRootCompany.publicId,
+          tradeName: selectedAccess.tenantRootCompany.tradeName,
+          legalName: selectedAccess.tenantRootCompany.legalName,
+          cnpj: selectedAccess.tenantRootCompany.cnpj,
+          status: selectedAccess.tenantRootCompany.status,
         }
       : null;
 
@@ -745,10 +1012,11 @@ export class AuthService {
         firebaseUid: persistedUser.firebaseUid ?? "",
         nome: persistedUser.name,
         email: persistedUser.email,
-        addressJson: userWithTenant?.addressJson ?? null,
+        addressJson: userWithAccess.addressJson ?? null,
         tenantRootCompany,
       },
       userSystemId: persistedUser.id,
+      tenantRootCompanyId: selectedAccess?.tenantRootCompanyId ?? null,
       profiles: profiles.map((profile) =>
         this.mapProfileCode(profile.accessProfile.code),
       ),
@@ -797,6 +1065,7 @@ export class AuthService {
   private async issueRefreshToken(
     userSystemId?: bigint,
     requestContext?: SessionRequestContext,
+    tenantRootCompanyId?: bigint | null,
   ) {
     if (!databaseUrl || !userSystemId) {
       return undefined;
@@ -811,6 +1080,7 @@ export class AuthService {
       data: {
         publicId: createPublicId("rft"),
         userSystemId,
+        tenantRootCompanyId,
         tokenHash: hashRefreshToken(refreshToken),
         expiresAt,
         ipAddress: this.resolveClientIp(requestContext),
@@ -872,6 +1142,267 @@ export class AuthService {
     }
 
     return (metadata as Record<string, unknown>).reviewStatus === "REJECTED";
+  }
+
+  private isCompanyAccessRequestForUser(
+    metadata: Prisma.JsonValue,
+    userPublicId: string,
+  ) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return false;
+    }
+
+    const item = metadata as Record<string, unknown>;
+    return (
+      item.source === "company_access_request" &&
+      item.userPublicId === userPublicId
+    );
+  }
+
+  private mapCompanyAccessDocument(item: {
+    publicId: string;
+    queuedAt: Date;
+    sentAt: Date | null;
+    failedAt: Date | null;
+    status: string;
+    metadataJson: Prisma.JsonValue;
+  }) {
+    const metadata =
+      item.metadataJson &&
+      typeof item.metadataJson === "object" &&
+      !Array.isArray(item.metadataJson)
+        ? (item.metadataJson as Record<string, unknown>)
+        : {};
+
+    return {
+      publicId: item.publicId,
+      type: "COMPANY_ACCESS_REQUEST",
+      status: textFromRecord(metadata, "reviewStatus", "PENDING"),
+      deliveryStatus: item.status,
+      cnpj: textFromRecord(metadata, "cnpj"),
+      companyName: textFromRecord(metadata, "companyName"),
+      requesterDocument: textFromRecord(metadata, "requesterDocument"),
+      requesterName: textFromRecord(metadata, "requesterName"),
+      requesterRole: textFromRecord(metadata, "requesterRole"),
+      requestedAccessLevel: textFromRecord(metadata, "requestedAccessLevel"),
+      queuedAt: item.queuedAt,
+      sentAt: item.sentAt,
+      failedAt: item.failedAt,
+    };
+  }
+
+  private resolveLinkedCompaniesForUser(user: {
+    tenantRootCompany: {
+      publicId: string;
+      tradeName: string;
+      legalName: string;
+      cnpj: string;
+      status: TenantRootCompanyStatus;
+    } | null;
+    tenantAccesses: Array<{
+      active: boolean;
+      accessProfile: { code: AccessProfileCode } | null;
+      tenantRootCompany: {
+        publicId: string;
+        tradeName: string;
+        legalName: string;
+        cnpj: string;
+        status: TenantRootCompanyStatus;
+      };
+    }>;
+  }) {
+    const byPublicId = new Map<string, Record<string, unknown>>();
+    for (const access of user.tenantAccesses) {
+      if (
+        !access.active ||
+        !this.tenantRootCompanyIsSelectable(access.tenantRootCompany.status)
+      ) {
+        continue;
+      }
+      byPublicId.set(access.tenantRootCompany.publicId, {
+        publicId: access.tenantRootCompany.publicId,
+        tradeName: access.tenantRootCompany.tradeName,
+        legalName: access.tenantRootCompany.legalName,
+        cnpj: access.tenantRootCompany.cnpj,
+        status: access.tenantRootCompany.status,
+        accessProfile: access.accessProfile
+          ? this.mapProfileCode(access.accessProfile.code)
+          : null,
+      });
+    }
+
+    if (
+      user.tenantRootCompany &&
+      this.tenantRootCompanyIsSelectable(user.tenantRootCompany.status) &&
+      !byPublicId.has(user.tenantRootCompany.publicId)
+    ) {
+      byPublicId.set(user.tenantRootCompany.publicId, {
+        publicId: user.tenantRootCompany.publicId,
+        tradeName: user.tenantRootCompany.tradeName,
+        legalName: user.tenantRootCompany.legalName,
+        cnpj: user.tenantRootCompany.cnpj,
+        status: user.tenantRootCompany.status,
+        accessProfile: null,
+      });
+    }
+
+    return Array.from(byPublicId.values());
+  }
+
+  private tenantRootCompanyIsSelectable(status: TenantRootCompanyStatus) {
+    return (
+      status === TenantRootCompanyStatus.ACTIVE ||
+      status === TenantRootCompanyStatus.DEMO
+    );
+  }
+
+  private resolveSelectedTenantAccess(
+    user: {
+      tenantAccesses: Array<{
+        active: boolean;
+        tenantRootCompanyId: bigint;
+        accessProfile: {
+          code: AccessProfileCode;
+          canViewSensitive: boolean;
+          canDownload: boolean;
+          canSoftDelete: boolean;
+        } | null;
+        tenantRootCompany: {
+          publicId: string;
+          tradeName: string;
+          legalName: string;
+          cnpj: string;
+          status: TenantRootCompanyStatus;
+        };
+      }>;
+    },
+    tenantRootCompanyPublicId: string,
+  ) {
+    return (
+      user.tenantAccesses.find(
+        (access) =>
+          access.active &&
+          access.tenantRootCompany.publicId === tenantRootCompanyPublicId &&
+          this.tenantRootCompanyIsSelectable(access.tenantRootCompany.status),
+      ) ?? null
+    );
+  }
+
+  private findApprovedTenantAccess(
+    userSystemId: bigint,
+    tenantRootCompanyPublicId: string,
+  ) {
+    return this.prisma.userTenantAccess.findFirst({
+      where: {
+        userSystemId,
+        active: true,
+        tenantRootCompany: {
+          publicId: tenantRootCompanyPublicId,
+          status: { in: [TenantRootCompanyStatus.ACTIVE, TenantRootCompanyStatus.DEMO] },
+        },
+      },
+      include: {
+        tenantRootCompany: true,
+        accessProfile: true,
+      },
+    });
+  }
+
+  private async tenantRootCompanyIdFromPayload(payload: AuthTokenPayload) {
+    const publicId = payload.tenantRootCompany?.publicId;
+    if (!publicId) {
+      return null;
+    }
+
+    const tenantRootCompany = await this.prisma.tenantRootCompany.findUnique({
+      where: { publicId },
+      select: { id: true },
+    });
+    return tenantRootCompany?.id ?? null;
+  }
+
+  private async findActiveUserForPreferences(payload: AuthTokenPayload) {
+    const user = await this.prisma.userSystem.findUnique({
+      where: { publicId: payload.sub },
+      include: { tenantRootCompany: true },
+    });
+
+    if (!user || user.status !== UserSystemStatus.ACTIVE) {
+      throw new UnauthorizedException(
+        "Usuario autenticado nao foi encontrado para preferencias.",
+      );
+    }
+
+    return user;
+  }
+
+  private calendarPreferenceTenantKey(
+    tenantRootCompany?: { publicId: string } | null,
+  ) {
+    return tenantRootCompany?.publicId ?? "unlinked";
+  }
+
+  private calendarPreferencesForTenant(
+    preferencesJson: Prisma.JsonValue,
+    tenantKey: string,
+  ) {
+    const container = this.calendarPreferenceContainer(preferencesJson);
+    const byTenant = this.recordFromUnknown(container.calendarByTenant);
+    return this.normalizeCalendarPreferences(byTenant[tenantKey]);
+  }
+
+  private calendarPreferenceContainer(preferencesJson: Prisma.JsonValue) {
+    return this.recordFromUnknown(preferencesJson);
+  }
+
+  private normalizeCalendarPreferences(value: unknown) {
+    const raw = this.recordFromUnknown(value);
+    const defaultView = textFromRecord(raw, "defaultView", "MONTH")
+      .toUpperCase()
+      .trim();
+    return {
+      defaultView: ["MONTH", "WEEK", "DAY", "LIST"].includes(defaultView)
+        ? defaultView
+        : "MONTH",
+      overdueWindow:
+        truncateForColumn(textFromRecord(raw, "overdueWindow", "Nao mostrar"), 40) ??
+        "Nao mostrar",
+      filters: this.stringMapFromUnknown(raw.filters),
+      timelineFilters: this.stringMapFromUnknown(raw.timelineFilters),
+      showNonBusinessDays:
+        typeof raw.showNonBusinessDays === "boolean"
+          ? raw.showNonBusinessDays
+          : true,
+    };
+  }
+
+  private recordFromUnknown(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  private stringMapFromUnknown(value: unknown): Record<string, string> {
+    const raw = this.recordFromUnknown(value);
+    const result: Record<string, string> = {};
+    for (const [key, item] of Object.entries(raw)) {
+      if (typeof item !== "string") {
+        continue;
+      }
+      const cleanKey = key.trim();
+      const cleanValue = item.trim();
+      if (
+        cleanKey.length === 0 ||
+        cleanKey.length > 80 ||
+        cleanValue.length === 0 ||
+        cleanValue.length > 180
+      ) {
+        continue;
+      }
+      result[cleanKey] = cleanValue;
+    }
+    return result;
   }
 
   private resolveClientIp(requestContext?: SessionRequestContext) {
@@ -1062,6 +1593,15 @@ function hashSensitiveSessionCode(
   return createHash("sha256")
     .update(`${sessionPublicId}:${userSystemId}:${code}`)
     .digest("hex");
+}
+
+function textFromRecord(
+  value: Record<string, unknown>,
+  key: string,
+  fallback = "",
+): string {
+  const item = value[key];
+  return typeof item === "string" ? item.trim() : fallback;
 }
 
 function maskEmail(value: string): string {

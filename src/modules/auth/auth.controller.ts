@@ -14,8 +14,10 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { buildRefreshCookieOptions } from "../../common/utils/cookie-options";
 import { RefreshSessionDto } from "./dto/refresh-session.dto";
 import { RequestCompanyAccessDto } from "./dto/request-company-access.dto";
+import { SelectCompanyContextDto } from "./dto/select-company-context.dto";
 import { SessionExchangeDto } from "./dto/session-exchange.dto";
 import { StartSensitiveSessionDto } from "./dto/start-sensitive-session.dto";
+import { UpdateCalendarPreferencesDto } from "./dto/update-calendar-preferences.dto";
 import { UpdateCurrentUserDto } from "./dto/update-current-user.dto";
 import { VerifySensitiveSessionDto } from "./dto/verify-sensitive-session.dto";
 import { InternalAuthGuard } from "./guards/internal-auth.guard";
@@ -28,6 +30,7 @@ type AuthenticatedRequest = FastifyRequest & {
 };
 
 type CookieRequest = FastifyRequest & {
+  user?: AuthTokenPayload;
   cookies?: Record<string, string>;
 };
 
@@ -83,6 +86,72 @@ export class AuthController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.authService.updateCurrentUser(dto, request.user!);
+  }
+
+  @Get("access-context")
+  @UseGuards(InternalAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Retorna o contexto empresarial autenticado ou solicitacoes pendentes do proprio usuario.",
+  })
+  async accessContext(@Req() request: AuthenticatedRequest) {
+    return this.authService.getAccessContext(request.user!);
+  }
+
+  @Post("company-context")
+  @UseGuards(InternalAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Seleciona uma empresa raiz ja aprovada e emite sessao interna escopada.",
+  })
+  async selectCompanyContext(
+    @Body() dto: SelectCompanyContextDto,
+    @Req() request: CookieRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const session = await this.authService.selectCompanyContext(
+      dto,
+      request.user!,
+      request.cookies?.refresh_token,
+      {
+        forwardedFor: request.headers["x-forwarded-for"],
+        forwardedHost: request.headers["x-forwarded-host"],
+        host: request.headers.host,
+        origin: request.headers.origin,
+        remoteAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+      },
+    );
+
+    this.applyRefreshCookie(reply, session.refreshToken);
+    return this.withoutRefreshToken(session);
+  }
+
+  @Get("preferences/calendar")
+  @UseGuards(InternalAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Carrega preferencias de calendario do usuario no tenant autenticado.",
+  })
+  async getCalendarPreferences(@Req() request: AuthenticatedRequest) {
+    return this.authService.getCalendarPreferences(request.user!);
+  }
+
+  @Patch("preferences/calendar")
+  @UseGuards(InternalAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Persiste preferencias de calendario do usuario no tenant autenticado.",
+  })
+  async updateCalendarPreferences(
+    @Body() dto: UpdateCalendarPreferencesDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.authService.updateCalendarPreferences(dto, request.user!);
   }
 
   @Post("access-request")

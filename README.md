@@ -206,12 +206,9 @@ Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
 
 1. Configurar dominio e HTTPS.
 2. Criar usuarios reais, conceder perfis internos e validar login real.
-3. Trocar `COOKIE_SECURE=true` quando HTTPS estiver ativo.
-4. Fechar UX completa de refresh/logout no front e validar sessao longa.
-5. Finalizar sensitive-session/step-up para acoes criticas e anexos sensiveis.
-6. Ligar storage privado, URL assinada curta e auditoria de download.
-7. Evoluir calendario com filtros salvos, preview de audiencia e confirmacao de ciencia.
-8. Evoluir relatorios com exportacao, persistencia de modelos e auditoria final.
-9. Concluir administracao do registry comercial de CNPJs, WAF/Captcha e SMS.
-10. Otimizar `GET /network/graph` com volume real e ACL fina.
-11. Definir rotina de backup/restore de banco.
+3. Fechar UX completa de refresh/logout no front e validar sessao longa em HTTPS.
+4. Evoluir calendario/comunicados com preview de audiencia e confirmacao de ciencia.
+5. Evoluir relatorios com exportacao, persistencia de modelos e auditoria final.
+6. Concluir administracao do registry comercial de CNPJs, WAF/Captcha e SMS.
+7. Otimizar `GET /network/graph` com volume real e ACL fina.
+8. Definir rotina de backup/restore de banco.

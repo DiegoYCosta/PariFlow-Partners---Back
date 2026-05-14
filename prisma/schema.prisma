@@ -242,6 +242,7 @@ model TenantRootCompany {
   updatedAt             DateTime                     @updatedAt
   onboardingRequests    ClientOnboardingRequest[]    @relation("TenantRootCompanyOnboardingRequests")
   userSystems           UserSystem[]                 @relation("UserSystemTenantRootCompany")
+  userTenantAccesses    UserTenantAccess[]           @relation("UserTenantAccessTenantRootCompany")
   providerCompanies     ProviderCompany[]            @relation("ProviderCompanyTenantRootCompany")
   clientCompanies       ClientCompany[]              @relation("ClientCompanyTenantRootCompany")
   contracts             Contract[]                   @relation("ContractTenantRootCompany")
@@ -257,6 +258,7 @@ model TenantRootCompany {
   notificationOutbox    NotificationOutbox[]         @relation("NotificationOutboxTenantRootCompany")
   nonBusinessDays       CalendarNonBusinessDay[]     @relation("CalendarNonBusinessDayTenantRootCompany")
   timelineRecords       TimelineRecord[]             @relation("TimelineRecordTenantRootCompany")
+  refreshTokens         RefreshToken[]               @relation("RefreshTokenTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
@@ -375,12 +377,14 @@ model UserSystem {
   name                    String                   @db.VarChar(160)
   email                   String                   @unique @db.VarChar(180)
   addressJson             Json?
+  preferencesJson         Json?
   status                  UserSystemStatus         @default(ACTIVE)
   mfaEnabled              Boolean                  @default(false)
   lastAccessAt            DateTime?
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   accessProfiles          UserAccessProfile[]
+  tenantAccesses          UserTenantAccess[]          @relation("UserTenantAccessUserSystem")
   refreshTokens           RefreshToken[]
   securityEvents          SecurityEvent[]
   sensitiveAccess         SensitiveSession[]
@@ -418,6 +422,7 @@ model AccessProfile {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   users            UserAccessProfile[]
+  tenantAccesses   UserTenantAccess[] @relation("UserTenantAccessProfile")
 
   @@map("perfil_acesso")
 }
@@ -432,6 +437,26 @@ model UserAccessProfile {
 
   @@unique([userSystemId, accessProfileId])
   @@map("usuario_perfil_acesso")
+}
+
+model UserTenantAccess {
+  id                  BigInt            @id @default(autoincrement())
+  publicId            String            @unique @db.VarChar(26)
+  userSystemId        BigInt
+  tenantRootCompanyId BigInt
+  accessProfileId     BigInt?
+  active              Boolean           @default(true)
+  approvedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  userSystem          UserSystem        @relation("UserTenantAccessUserSystem", fields: [userSystemId], references: [id], onDelete: Cascade)
+  tenantRootCompany   TenantRootCompany @relation("UserTenantAccessTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: Cascade)
+  accessProfile       AccessProfile?    @relation("UserTenantAccessProfile", fields: [accessProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([userSystemId, tenantRootCompanyId])
+  @@index([tenantRootCompanyId, active])
+  @@index([accessProfileId])
+  @@map("usuario_empresa_raiz_acesso")
 }
 
 model ProviderCompany {
@@ -991,19 +1016,22 @@ model CalendarNonBusinessDay {
 }
 
 model RefreshToken {
-  id           BigInt             @id @default(autoincrement())
-  publicId     String             @unique @db.VarChar(26)
-  userSystemId BigInt
-  tokenHash    String             @db.VarChar(255)
-  status       RefreshTokenStatus @default(ACTIVE)
-  expiresAt    DateTime
-  rotatedAt    DateTime?
-  revokedAt    DateTime?
-  ipAddress    String?            @db.VarChar(64)
-  userAgent    String?            @db.VarChar(255)
-  createdAt    DateTime           @default(now())
-  userSystem   UserSystem         @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+  id                  BigInt             @id @default(autoincrement())
+  publicId            String             @unique @db.VarChar(26)
+  userSystemId        BigInt
+  tenantRootCompanyId BigInt?
+  tokenHash           String             @db.VarChar(255)
+  status              RefreshTokenStatus @default(ACTIVE)
+  expiresAt           DateTime
+  rotatedAt           DateTime?
+  revokedAt           DateTime?
+  ipAddress           String?            @db.VarChar(64)
+  userAgent           String?            @db.VarChar(255)
+  createdAt           DateTime           @default(now())
+  userSystem          UserSystem         @relation(fields: [userSystemId], references: [id], onDelete: Cascade)
+  tenantRootCompany   TenantRootCompany? @relation("RefreshTokenTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
+  @@index([tenantRootCompanyId])
   @@map("refresh_tokens")
 }
 

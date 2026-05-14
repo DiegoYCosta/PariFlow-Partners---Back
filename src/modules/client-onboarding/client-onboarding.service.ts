@@ -867,6 +867,28 @@ export class ClientOnboardingService {
         accessProfileId: adminProfile.id
       }
     });
+
+    await tx.userTenantAccess.upsert({
+      where: {
+        userSystemId_tenantRootCompanyId: {
+          userSystemId: user.id,
+          tenantRootCompanyId
+        }
+      },
+      update: {
+        active: released,
+        accessProfileId: adminProfile.id,
+        approvedAt: released ? new Date() : null
+      },
+      create: {
+        publicId: createPublicId('uta'),
+        userSystemId: user.id,
+        tenantRootCompanyId,
+        accessProfileId: adminProfile.id,
+        active: released,
+        approvedAt: released ? new Date() : null
+      }
+    });
   }
 
   private normalizedVerificationTarget(
