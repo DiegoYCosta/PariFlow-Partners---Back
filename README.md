@@ -1,60 +1,55 @@
-# PariFlow Partners Back
+﻿# PariFlow Partners Back
 
 Backend NestJS/Fastify/Prisma do PariFlow Partners.
 
-Data de referencia: `2026-05-12`.
+Data de referencia: `2026-05-14`.
 
-## Estado Atual
+## Estado atual
 
-O backend possui os modulos operacionais centrais e ja foi publicado em
-homologacao AWS por IP atras de Apache, PM2 e MySQL local.
+O backend ja esta alem da fundacao inicial. Ele possui os modulos operacionais
+centrais, isolamento por empresa raiz em services principais, homologacao AWS
+por IP atras de Apache/PM2/MySQL local e integracao real com o front Flutter.
 
 O que nao deve mais aparecer como pendencia inicial:
 
-- criar empresas, clientes ou contratos;
-- criar People/pessoas;
-- criar tags, anexos ou ocorrencias;
-- criar `GET /network/graph`;
-- criar endpoints basicos de agenda;
-- criar endpoint basico de relatorios;
-- criar CRUD basico dos modulos mestre;
+- criar empresas, clientes, contratos ou catalogo contratual basico;
+- criar People/pessoas, vinculos, ocorrencias, tags ou anexos;
+- criar `GET /api/v1/network/graph`;
+- criar dashboard operacional da home;
+- criar endpoints basicos de agenda, timeline ou relatorios;
 - habilitar mock/sample como fallback de runtime.
 
 ## Stack
 
 - Node.js 22+
-- NestJS
+- NestJS 11
 - Fastify `5.8.5`
-- Prisma
+- Prisma `6.8.x`
 - MySQL
 - Firebase Admin para validar Firebase ID Token
+- JWT interno com refresh token rotativo em cookie `HttpOnly`
+- Nodemailer/SMTP e adapter WhatsApp Cloud API quando variaveis estiverem configuradas
 - Apache reverse proxy
 - PM2
 
-Swagger/OpenAPI existe para uso local/controlado, mas fica desabilitado em
-producao por `SWAGGER_ENABLED=false`.
+Swagger/OpenAPI existe para uso local/controlado, mas deve ficar desligado em
+AWS/producao com `SWAGGER_ENABLED=false`.
 
-## Seguranca e Deploy AWS
+## Documentacao viva
 
-- [Checklist AWS de seguranca](docs/aws-security-checklist.md)
-- [Apache reverse proxy com headers de seguranca](apache/pariflow-back.conf.example)
-- `scripts/smoke-aws-security.sh`
+- [Indice do backend](docs/README.md)
+- [Checklist AWS e seguranca](docs/aws-security-checklist.md)
+- [Client onboarding e isolamento por tenant](docs/client-onboarding-and-tenant-isolation.md)
+- [Calendario compartilhado, banco e notificacoes](docs/calendario-compartilhado-backend.md)
+- [Focus Board, hub e agenda](docs/focus-board-hub-agenda.md)
+- [Apache reverse proxy](apache/pariflow-back.conf.example)
 
-Estado remoto verificado:
+As pastas externas `D:\DEV\flutter\JOTABE\docs - BACK` e
+`D:\DEV\flutter\JOTABE\DPPRO_JOTABE\Documentacao` continuam como referencia de
+produto e operacao, mas os documentos essenciais tambem estao agora em
+`PariFlow Partners - Back/docs` para manter links do repositorio funcionais.
 
-- `NODE_ENV=production`
-- `PREVIEW_AUTH_BYPASS=false`
-- `DEV_AUTH_BYPASS=false`
-- `SEED_ENABLE_SAMPLE_DATA=false`
-- `SWAGGER_ENABLED=false`
-- JWT secrets nao usam `change-this-*`
-- `COOKIE_SECURE=false` enquanto a homologacao for HTTP por IP
-
-O deploy instala dependencias com `npm ci --omit=optional`, porque o backend
-usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
-`firebase-admin`.
-
-## Endpoints Ativos
+## Endpoints ativos
 
 ### Plataforma
 
@@ -63,26 +58,36 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 - `GET /health/ready`
 - `GET /api/docs` somente quando `SWAGGER_ENABLED=true`
 
-### Auth
+### Auth e sessao
 
 - `POST /api/v1/auth/session/exchange`
 - `GET /api/v1/auth/me`
+- `PATCH /api/v1/auth/me`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
-- `POST /api/v1/auth/sensitive-session/start` reservado/parcial
-- `POST /api/v1/auth/sensitive-session/verify` reservado/parcial
+- `POST /api/v1/auth/sensitive-session/start`
+- `POST /api/v1/auth/sensitive-session/verify`
 
-### Empresas, Clientes e Contratos
+### Onboarding de cliente
 
+- `GET /api/v1/public/client-onboarding/options`
+- `GET /api/v1/public/client-onboarding/cnpj-status?cnpj=...`
+- `GET /api/v1/public/client-onboarding/cnpj/:cnpj/status`
+- `POST /api/v1/public/client-onboarding/verification/start`
+- `POST /api/v1/public/client-onboarding`
+- `GET /api/v1/client-onboarding/requests`
+- `POST /api/v1/client-onboarding/requests/:publicId/approve`
+- `POST /api/v1/client-onboarding/requests/:publicId/reject`
+
+### Dashboard, empresas, clientes e contratos
+
+- `GET /api/v1/dashboard/home`
 - `GET/POST/PATCH/DELETE /api/v1/empresas-prestadoras`
 - `GET /api/v1/empresas-prestadoras/:publicId`
 - `GET/POST/PATCH/DELETE /api/v1/clientes`
 - `GET /api/v1/clientes/:publicId`
 - `GET/POST/PATCH/DELETE /api/v1/contratos`
 - `GET /api/v1/contratos/:publicId`
-
-### Catalogo Contratual
-
 - `GET/POST/PATCH/DELETE /api/v1/contratos/tipos`
 - `GET/POST/PATCH/DELETE /api/v1/contratos/modelos`
 - `GET/POST/PATCH/DELETE /api/v1/contratos/servicos`
@@ -91,7 +96,7 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 - `GET/POST /api/v1/contratos/:publicId/documentos`
 - `PATCH/DELETE /api/v1/contratos/documentos/:documentPublicId`
 
-### People, Dossie e Network
+### People, dossie, timeline e network
 
 - `GET/POST/PATCH/DELETE /api/v1/pessoas`
 - `GET /api/v1/pessoas/:publicId`
@@ -104,55 +109,37 @@ usa Firebase Auth/Admin, mas nao usa Firestore/Storage opcionais do pacote
 - `GET/POST/PATCH/DELETE /api/v1/tags-entidade`
 - `POST /api/v1/tags-entidade/submissions`
 - `GET/POST/PATCH/DELETE /api/v1/anexos`
+- `GET /api/v1/anexos/:publicId/access`
 - `POST /api/v1/anexos/submissions`
+- `GET/POST/PATCH/DELETE /api/v1/timeline`
+- `GET /api/v1/timeline/:publicId`
 - `GET /api/v1/network/graph`
 
-### Agenda, Relatorios e Notificacoes
+### Agenda, relatorios e notificacoes
 
 - `GET/POST/PATCH/DELETE /api/v1/agenda`
 - `GET/POST /api/v1/agenda/non-business-days`
 - `DELETE /api/v1/agenda/non-business-days/:publicId`
+- `GET /api/v1/agenda/applicability`
 - `POST /api/v1/relatorios/executar`
-- `notification_outbox` com worker SMTP para e-mail quando `SMTP_*` estiver
-  configurado
+- `notification_outbox` com worker SMTP para e-mail e adapter WhatsApp quando
+  `WHATSAPP_*` estiver configurado.
 
-A agenda atual suporta compromissos/lembretes, recorrencia simples, politicas
-de notificacao por dia util, canais de notificacao, dias nao uteis e relatorio
-`controls_calendar`. Toda empresa recebe por padrao os feriados nacionais do
-Brasil no calendario compartilhado ate 2050; esses feriados sao base do sistema
-e pedidos de exclusao devem ser encaminhados ao suporte. Dias nao uteis
-adicionais podem ser cadastrados por empresa, regiao, estado ou cidade.
+## Contratos importantes
 
-As rotas `*/submissions` ficam desligadas por padrao com
-`PUBLIC_SUBMISSIONS_ENABLED=false`. Se forem habilitadas futuramente, producao
-exige `PUBLIC_SUBMISSION_TOKEN` e o cliente deve enviar
-`X-PariFlow-Public-Submission-Token`.
+- A API usa prefixo `api/v1`, exceto health.
+- Respostas de sucesso passam pelo envelope global `{ data, meta }`.
+- Erros passam por `{ error: { code, message, traceId } }`.
+- O front sempre trafega `publicId`; ID numerico interno nao deve cruzar a API.
+- ACL, tenant, sensivel, anexos e permissoes sao decididos no backend.
+- `.env`, secrets Firebase, JWT, SMTP, WhatsApp, AWS e banco nao entram no Git.
+- Rotas `*/submissions` ficam desligadas por padrao com
+  `PUBLIC_SUBMISSIONS_ENABLED=false`; producao exige `PUBLIC_SUBMISSION_TOKEN`.
 
-## Integracao com o Front
-
-O front consome API real para:
-
-- Companies, Clients e Contracts;
-- catalogo contratual;
-- People;
-- ocorrencias;
-- anexos;
-- agenda/lembretes;
-- relatorios;
-- Network.
-
-Regras mantidas:
-
-- front usa `publicId`, nunca ID interno;
-- ACL, conteudo sensivel e permissoes sao decididos no backend;
-- Service Account Firebase, JWT secrets, senha de banco e chaves AWS ficam
-  somente no backend/infra;
-- `.env` real nao entra no Git;
-- host publico exige Firebase Admin configurado e build sem `dev-token`.
-
-## Subida Local
+## Subida local
 
 ```powershell
+cd "D:\DEV\flutter\JOTABE\PariFlow Partners - Back"
 npm.cmd install
 npm.cmd run db:local:setup
 npm.cmd run prisma:generate
@@ -167,8 +154,8 @@ Modo local reversivel sem Firebase real:
 npm.cmd run dev:local-token
 ```
 
-Esse modo define `NODE_ENV=development`, prende a API em loopback e habilita
-`DEV_AUTH_BYPASS=true` somente no processo atual. Nao altera AWS nem banco real.
+Esse modo prende a API em loopback, habilita `DEV_AUTH_BYPASS=true` somente no
+processo atual e nao altera AWS nem banco real.
 
 Com o back local ativo:
 
@@ -183,7 +170,7 @@ Swagger local:
 http://localhost:3000/api/docs
 ```
 
-## Firebase Admin e Usuarios Reais
+## Firebase Admin e usuarios reais
 
 Para liberar login online:
 
@@ -197,18 +184,12 @@ Para liberar login online:
 Scripts:
 
 ```powershell
-# aplica no .env local do backend
 .\scripts\apply-firebase-admin-env.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
 npm.cmd run user:grant-admin -- --email "admin@empresa.com" --firebaseUid "uid" --name "Administrador"
 
-# aplica na EC2 sem imprimir a private key
 .\scripts\apply-firebase-admin-aws.ps1 -ServiceAccountJson "C:\caminho\service-account.json"
 .\scripts\grant-admin-aws.ps1 -Email "admin@empresa.com" -FirebaseUid "uid" -Name "Administrador"
 ```
-
-Estado verificado em 2026-05-08: Service Account Firebase Admin aplicado na
-EC2 sem expor private key. Ainda faltam usuario real, perfil interno e smoke de
-login real ponta a ponta.
 
 ## Seed
 
@@ -221,17 +202,16 @@ O seed e idempotente:
 
 Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
 
-## Pendencias Reais
+## Pendencias reais
 
 1. Configurar dominio e HTTPS.
-2. Criar usuarios reais e conceder perfis internos.
-3. Integrar o front ao refresh/logout quando a UX de sessao for fechada.
-4. Completar sensitive-session/step-up.
-5. Ligar storage privado e download rastreavel para anexos sensiveis.
-6. Implementar calendario compartilhado com feriados regionais, dias nao uteis,
-   comunicados por grupo, classificacoes e filtros avancados.
-7. Implementar auditoria operacional e eventos de seguranca.
-8. Evoluir relatorios e consultas executivas com exportacao e auditoria.
-9. Enriquecer detalhes de clientes/prestadoras quando o front precisar.
-10. Otimizar `GET /network/graph` com dados reais e regras de ACL.
-11. Definir backup/restore de banco.
+2. Criar usuarios reais, conceder perfis internos e validar login real.
+3. Trocar `COOKIE_SECURE=true` quando HTTPS estiver ativo.
+4. Fechar UX completa de refresh/logout no front e validar sessao longa.
+5. Finalizar sensitive-session/step-up para acoes criticas e anexos sensiveis.
+6. Ligar storage privado, URL assinada curta e auditoria de download.
+7. Evoluir calendario com filtros salvos, preview de audiencia e confirmacao de ciencia.
+8. Evoluir relatorios com exportacao, persistencia de modelos e auditoria final.
+9. Concluir administracao do registry comercial de CNPJs, WAF/Captcha e SMS.
+10. Otimizar `GET /network/graph` com volume real e ACL fina.
+11. Definir rotina de backup/restore de banco.
