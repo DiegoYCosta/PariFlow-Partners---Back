@@ -54,7 +54,9 @@ const optionalUrlListFromEnv = z.preprocess((value) => {
 }, z.array(z.string().url()).optional());
 
 const environmentSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z
+    .enum(['development', 'test', 'production'])
+    .default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().min(1).default('0.0.0.0'),
   APP_NAME: z.string().min(1).default('pariflow-back'),
@@ -106,8 +108,16 @@ const environmentSchema = z.object({
     .int()
     .positive()
     .default(30000),
-  NOTIFICATION_OUTBOX_BATCH_SIZE: z.coerce.number().int().positive().default(10),
-  NOTIFICATION_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  NOTIFICATION_OUTBOX_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10),
+  NOTIFICATION_OUTBOX_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(3),
   SMTP_HOST: optionalStringFromEnv,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: booleanFromEnv.default(false),
@@ -117,9 +127,19 @@ const environmentSchema = z.object({
   WHATSAPP_API_BASE_URL: z.string().url().default('https://graph.facebook.com'),
   WHATSAPP_API_VERSION: z.string().min(1).default('v25.0'),
   WHATSAPP_PHONE_NUMBER_ID: optionalStringFromEnv,
+  WHATSAPP_BUSINESS_ACCOUNT_ID: optionalStringFromEnv,
   WHATSAPP_ACCESS_TOKEN: optionalStringFromEnv,
+  WHATSAPP_MANAGER_ACCESS_TOKEN: optionalStringFromEnv,
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: optionalStringFromEnv,
   WHATSAPP_DEFAULT_TEMPLATE_NAME: optionalStringFromEnv,
   WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE: z.string().min(1).default('pt_BR'),
+  META_APP_ID: optionalStringFromEnv,
+  META_CLIENT_TOKEN: optionalStringFromEnv,
+  META_APP_SECRET: optionalStringFromEnv,
+  WHATSAPP_SUPPORT_PHONE: optionalStringFromEnv,
+  TWILIO_ACCOUNT_SID: optionalStringFromEnv,
+  TWILIO_AUTH_TOKEN: optionalStringFromEnv,
+  TWILIO_SMS_FROM: optionalStringFromEnv,
   SEED_ADMIN_NAME: optionalStringFromEnv,
   SEED_ADMIN_EMAIL: optionalEmailFromEnv,
   SEED_ADMIN_FIREBASE_UID: optionalStringFromEnv,
@@ -198,7 +218,8 @@ assertProductionEnvIsSafe(parsedEnv);
 
 export const env: Env = {
   ...parsedEnv,
-  SWAGGER_ENABLED: parsedEnv.SWAGGER_ENABLED ?? parsedEnv.NODE_ENV !== 'production'
+  SWAGGER_ENABLED:
+    parsedEnv.SWAGGER_ENABLED ?? parsedEnv.NODE_ENV !== 'production'
 };
 export const databaseUrl = buildDatabaseUrlFromEnv(env);
 

@@ -12,6 +12,7 @@ import {
 import { env } from '../../config/env';
 import { PrismaService } from '../../infra/database/prisma.service';
 import { SmtpEmailSender } from './smtp-email.sender';
+import { TwilioSmsSender } from './twilio-sms.sender';
 import { WhatsAppCloudSender } from './whatsapp-cloud.sender';
 
 @Injectable()
@@ -20,11 +21,13 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private running = false;
   private missingSmtpLogged = false;
+  private missingSmsLogged = false;
   private missingWhatsAppLogged = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly smtpEmailSender: SmtpEmailSender,
+    private readonly twilioSmsSender: TwilioSmsSender,
     private readonly whatsAppCloudSender: WhatsAppCloudSender
   ) {}
 
@@ -62,6 +65,7 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
           channel: {
             in: [
               NotificationOutboxChannel.EMAIL,
+              NotificationOutboxChannel.SMS,
               NotificationOutboxChannel.WHATSAPP
             ]
           },
@@ -160,6 +164,19 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
     }
 
     if (
+      channel === NotificationOutboxChannel.SMS &&
+      !this.twilioSmsSender.isConfigured()
+    ) {
+      if (!this.missingSmsLogged) {
+        this.logger.warn(
+          'Twilio SMS nao configurado; mensagens SMS permanecerao pendentes na outbox.'
+        );
+        this.missingSmsLogged = true;
+      }
+      return false;
+    }
+
+    if (
       channel === NotificationOutboxChannel.WHATSAPP &&
       !this.whatsAppCloudSender.isConfigured()
     ) {
@@ -180,6 +197,14 @@ export class NotificationOutboxWorker implements OnModuleInit, OnModuleDestroy {
       await this.smtpEmailSender.send({
         to: item.target,
         subject: item.subject,
+        text: item.message
+      });
+      return;
+    }
+
+    if (item.channel === NotificationOutboxChannel.SMS) {
+      await this.twilioSmsSender.send({
+        to: item.target,
         text: item.message
       });
       return;

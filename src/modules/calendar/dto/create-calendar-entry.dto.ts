@@ -28,6 +28,8 @@ import {
 export const calendarNotificationChannels = [
   'IN_APP',
   'EMAIL',
+  'WHATSAPP',
+  'SMS',
   'PUSH',
   'WEBHOOK'
 ] as const;
@@ -101,7 +103,8 @@ export class CreateCalendarEntryDto {
 
   @ApiProperty({
     example: '2026-05-01',
-    description: 'Data alvo do lembrete/compromisso. Aceita ISO, YYYY-MM-DD ou DD/MM/AAAA.'
+    description:
+      'Data alvo do lembrete/compromisso. Aceita ISO, YYYY-MM-DD ou DD/MM/AAAA.'
   })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
@@ -219,12 +222,14 @@ export class CreateCalendarEntryDto {
   @Transform(({ value }) =>
     Array.isArray(value)
       ? value
-          .map((item) => (typeof item === 'string' ? item.trim().toUpperCase() : item))
+          .map((item) =>
+            typeof item === 'string' ? item.trim().toUpperCase() : item
+          )
           .filter((item) => typeof item === 'string' && item.length > 0)
       : value
   )
   @IsArray()
-  @ArrayMaxSize(4)
+  @ArrayMaxSize(6)
   @ArrayUnique()
   @IsIn(calendarNotificationChannels, { each: true })
   notificationChannels?: CalendarNotificationChannel[];

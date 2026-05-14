@@ -14,6 +14,7 @@ import {
   CalendarNonBusinessDay,
   EmploymentLinkStatus,
   NotificationOutboxChannel,
+  NotificationOutboxStatus,
   Prisma,
   UserSystemStatus
 } from '@prisma/client';
@@ -93,6 +94,12 @@ interface CalendarListRange {
   to: Date;
 }
 
+type CalendarNotificationUser = {
+  id: bigint;
+  email: string;
+  addressJson: Prisma.JsonValue | null;
+};
+
 @Injectable()
 export class CalendarService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -115,7 +122,9 @@ export class CalendarService {
       and.push({
         OR: [
           { contract: { publicId: query.contractPublicId } },
-          { employmentLink: { contract: { publicId: query.contractPublicId } } }
+          {
+            employmentLink: { contract: { publicId: query.contractPublicId } }
+          }
         ]
       });
     }
@@ -168,7 +177,9 @@ export class CalendarService {
       and.push({
         OR: [
           { position: { publicId: query.positionPublicId } },
-          { employmentLink: { position: { publicId: query.positionPublicId } } }
+          {
+            employmentLink: { position: { publicId: query.positionPublicId } }
+          }
         ]
       });
     }
@@ -176,7 +187,11 @@ export class CalendarService {
     if (query.contractTypePublicId) {
       and.push({
         OR: [
-          { contract: { contractType: { publicId: query.contractTypePublicId } } },
+          {
+            contract: {
+              contractType: { publicId: query.contractTypePublicId }
+            }
+          },
           {
             employmentLink: {
               contract: {
@@ -202,9 +217,7 @@ export class CalendarService {
 
     const recurrenceRule = this.recurrenceRuleValue(query.recurrenceRule);
     if (query.recurrenceRule) {
-      and.push(
-        recurrenceRule ? { recurrenceRule } : { recurrenceRule: null }
-      );
+      and.push(recurrenceRule ? { recurrenceRule } : { recurrenceRule: null });
     }
 
     if (query.holidayRegionCode) {
@@ -256,7 +269,9 @@ export class CalendarService {
       and.push({
         OR: [
           { employmentLinkId: null },
-          { employmentLink: { status: { not: EmploymentLinkStatus.DISMISSED } } }
+          {
+            employmentLink: { status: { not: EmploymentLinkStatus.DISMISSED } }
+          }
         ]
       });
     }
@@ -335,8 +350,7 @@ export class CalendarService {
         notificationOffsetBusinessDays: dto.notificationOffsetBusinessDays,
         notificationTime: dto.notificationTime,
         notificationScheduledAt,
-        notificationChannelsJson:
-          notificationChannels as Prisma.InputJsonValue,
+        notificationChannelsJson: notificationChannels as Prisma.InputJsonValue,
         person: relations.personId
           ? { connect: { id: relations.personId } }
           : undefined,
@@ -368,6 +382,7 @@ export class CalendarService {
       `Criou item de agenda ${created.title}.`
     );
 
+    await this.queueCalendarEntryNotifications(created, notificationChannels);
     await this.queueAudienceNotifications(created, dto, notificationChannels);
 
     return this.mapEntry(created, actor);
@@ -383,7 +398,9 @@ export class CalendarService {
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
     const current = await this.ensureEntry(publicId, actor);
     if (!this.canManage(current, actor)) {
-      throw new ForbiddenException('Voce nao pode alterar este item de agenda.');
+      throw new ForbiddenException(
+        'Voce nao pode alterar este item de agenda.'
+      );
     }
 
     const hasRelationUpdate = this.hasRelationUpdate(dto);
@@ -462,7 +479,9 @@ export class CalendarService {
         ...(dto.recurrenceRule !== undefined
           ? { recurrenceRule: this.recurrenceRuleValue(dto.recurrenceRule) }
           : {}),
-        ...(shouldUpdateAudience ? { audienceJson: this.audienceJson(dto) } : {}),
+        ...(shouldUpdateAudience
+          ? { audienceJson: this.audienceJson(dto) }
+          : {}),
         startsAt,
         endsAt,
         ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
@@ -511,6 +530,12 @@ export class CalendarService {
       `Atualizou item de agenda ${updated.title}.`
     );
 
+    await this.cancelPendingCalendarNotifications(updated.publicId);
+    await this.queueCalendarEntryNotifications(
+      updated,
+      this.channelsFromJson(updated.notificationChannelsJson)
+    );
+
     return this.mapEntry(updated, actor);
   }
 
@@ -520,7 +545,9 @@ export class CalendarService {
     const actorUserId = await this.resolveAuthenticatedUserId(actor.sub);
     const current = await this.ensureEntry(publicId, actor);
     if (!this.canManage(current, actor)) {
-      throw new ForbiddenException('Voce nao pode cancelar este item de agenda.');
+      throw new ForbiddenException(
+        'Voce nao pode cancelar este item de agenda.'
+      );
     }
 
     const canceled = await this.prisma.calendarEntry.update({
@@ -539,6 +566,8 @@ export class CalendarService {
       canceled.publicId,
       `Cancelou item de agenda ${canceled.title}.`
     );
+
+    await this.cancelPendingCalendarNotifications(canceled.publicId);
 
     return this.mapEntry(canceled, actor);
   }
@@ -603,8 +632,7 @@ export class CalendarService {
       items: mappedItems,
       meta: {
         total: mappedItems.length,
-        note:
-          'Dias nao uteis entram no calculo de notificacoes em dias uteis. Feriados nacionais do Brasil sao padrao ate 2050.'
+        note: 'Dias nao uteis entram no calculo de notificacoes em dias uteis. Feriados nacionais do Brasil sao padrao ate 2050.'
       }
     };
   }
@@ -1161,10 +1189,7 @@ export class CalendarService {
     const and: Prisma.CalendarNonBusinessDayWhereInput[] = [
       { active: true },
       {
-        OR: [
-          { date: { gte: from, lte: to } },
-          { isRecurringYearly: true }
-        ]
+        OR: [{ date: { gte: from, lte: to } }, { isRecurringYearly: true }]
       }
     ];
 
@@ -1205,7 +1230,8 @@ export class CalendarService {
     stateCode?: string | null;
     cityName?: string | null;
   }): CalendarGeoScope {
-    const regionCode = this.nullIfEmpty(input.regionCode)?.toUpperCase() ?? null;
+    const regionCode =
+      this.nullIfEmpty(input.regionCode)?.toUpperCase() ?? null;
     const stateCode =
       this.nullIfEmpty(input.stateCode)?.toUpperCase() ??
       this.stateFromRegionCode(regionCode);
@@ -1503,8 +1529,9 @@ export class CalendarService {
     const normalized: CalendarNotificationChannel[] = channels?.length
       ? channels
       : ['IN_APP', 'EMAIL'];
-    const filtered = normalized.filter((channel): channel is CalendarNotificationChannel =>
-      calendarNotificationChannels.includes(channel)
+    const filtered = normalized.filter(
+      (channel): channel is CalendarNotificationChannel =>
+        calendarNotificationChannels.includes(channel)
     );
     return filtered.length > 0 ? filtered : ['IN_APP', 'EMAIL'];
   }
@@ -1536,12 +1563,45 @@ export class CalendarService {
     };
   }
 
+  private async queueCalendarEntryNotifications(
+    item: CalendarEntryWithRelations,
+    channels: CalendarNotificationChannel[]
+  ) {
+    if (
+      item.kind === CalendarEntryKind.NOTICE ||
+      item.status !== CalendarEntryStatus.SCHEDULED ||
+      !item.notificationScheduledAt
+    ) {
+      return;
+    }
+
+    const user = item.assignedToUserSystem ?? item.createdByUserSystem;
+    if (!user) {
+      return;
+    }
+
+    const rows = this.notificationRowsForUser({
+      item,
+      user,
+      channels,
+      source: 'calendar_entry_alarm',
+      message: this.calendarNotificationMessage(item),
+      nextAttemptAt: item.notificationScheduledAt
+    });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    await this.prisma.notificationOutbox.createMany({ data: rows });
+  }
+
   private async queueAudienceNotifications(
     item: CalendarEntryWithRelations,
     dto: CreateCalendarEntryDto,
     channels: CalendarNotificationChannel[]
   ) {
-    if (item.kind !== CalendarEntryKind.NOTICE || !channels.includes('EMAIL')) {
+    if (item.kind !== CalendarEntryKind.NOTICE) {
       return;
     }
 
@@ -1556,7 +1616,6 @@ export class CalendarService {
           ? { tenantRootCompanyId: item.tenantRootCompanyId }
           : {}),
         status: UserSystemStatus.ACTIVE,
-        email: { not: '' },
         accessProfiles: {
           some: {
             accessProfile: {
@@ -1568,7 +1627,8 @@ export class CalendarService {
       select: {
         id: true,
         email: true,
-        name: true
+        name: true,
+        addressJson: true
       }
     });
 
@@ -1585,25 +1645,187 @@ export class CalendarService {
       `Agenda: ${item.publicId}.`
     ].join('\n');
 
-    await this.prisma.notificationOutbox.createMany({
-      data: users.map((user) => ({
-        publicId: createPublicId('not'),
-        tenantRootCompanyId: item.tenantRootCompanyId,
-        channel: NotificationOutboxChannel.EMAIL,
-        target: user.email,
-        subject: item.title,
+    const rows = users.flatMap((user) =>
+      this.notificationRowsForUser({
+        item,
+        user,
+        channels,
+        source: 'shared_calendar_notice',
         message,
+        metadata: { profileCodes }
+      })
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    await this.prisma.notificationOutbox.createMany({ data: rows });
+  }
+
+  private async cancelPendingCalendarNotifications(publicId: string) {
+    await this.prisma.notificationOutbox.updateMany({
+      where: {
+        status: {
+          in: [
+            NotificationOutboxStatus.PENDING,
+            NotificationOutboxStatus.PROCESSING
+          ]
+        },
         metadataJson: {
-          source: 'shared_calendar_notice',
-          calendarEntryPublicId: item.publicId,
-          userSystemId: String(user.id),
-          profileCodes
-        } as Prisma.InputJsonValue
-      }))
+          path: '$.calendarEntryPublicId',
+          equals: publicId
+        }
+      },
+      data: {
+        status: NotificationOutboxStatus.CANCELED,
+        nextAttemptAt: null,
+        failureReason: 'Item de agenda alterado ou cancelado antes do envio.'
+      }
     });
   }
 
-  private async resolveAuthenticatedUserId(userPublicId: string): Promise<bigint> {
+  private notificationRowsForUser(input: {
+    item: CalendarEntryWithRelations;
+    user: CalendarNotificationUser;
+    channels: CalendarNotificationChannel[];
+    source: string;
+    message: string;
+    nextAttemptAt?: Date;
+    metadata?: Record<string, unknown>;
+  }): Prisma.NotificationOutboxCreateManyInput[] {
+    return input.channels.flatMap((channel) => {
+      const outboxChannel = this.outboxChannelForCalendarChannel(channel);
+      if (!outboxChannel) {
+        return [];
+      }
+
+      const target = this.notificationTargetForUser(input.user, outboxChannel);
+      if (!target) {
+        return [];
+      }
+
+      return [
+        {
+          publicId: createPublicId('not'),
+          tenantRootCompanyId: input.item.tenantRootCompanyId,
+          channel: outboxChannel,
+          target,
+          subject: input.item.title,
+          message: input.message,
+          nextAttemptAt: input.nextAttemptAt,
+          metadataJson: {
+            source: input.source,
+            calendarEntryPublicId: input.item.publicId,
+            calendarEntryKind: input.item.kind,
+            userSystemId: String(input.user.id),
+            ...input.metadata
+          } as Prisma.InputJsonValue
+        }
+      ];
+    });
+  }
+
+  private calendarNotificationMessage(item: CalendarEntryWithRelations) {
+    return [
+      `${this.kindLabel(item.kind)}: ${item.title}`,
+      item.description ?? '',
+      `Quando: ${this.formatDateTime(item.startsAt)}.`,
+      item.notificationScheduledAt
+        ? `Notificacao: ${this.formatDateTime(item.notificationScheduledAt)}.`
+        : '',
+      `Agenda: ${item.publicId}.`
+    ]
+      .filter((line) => line.trim().length > 0)
+      .join('\n');
+  }
+
+  private outboxChannelForCalendarChannel(
+    channel: CalendarNotificationChannel
+  ): NotificationOutboxChannel | null {
+    switch (channel) {
+      case 'EMAIL':
+        return NotificationOutboxChannel.EMAIL;
+      case 'WHATSAPP':
+        return NotificationOutboxChannel.WHATSAPP;
+      case 'SMS':
+        return NotificationOutboxChannel.SMS;
+      default:
+        return null;
+    }
+  }
+
+  private notificationTargetForUser(
+    user: CalendarNotificationUser,
+    channel: NotificationOutboxChannel
+  ) {
+    if (channel === NotificationOutboxChannel.EMAIL) {
+      return user.email.trim() || null;
+    }
+
+    const keys =
+      channel === NotificationOutboxChannel.WHATSAPP
+        ? [
+            'whatsapp',
+            'whatsApp',
+            'whatsappPhone',
+            'phone',
+            'telefone',
+            'mobile',
+            'celular'
+          ]
+        : ['sms', 'smsPhone', 'phone', 'telefone', 'mobile', 'celular'];
+    return this.phoneTargetFromJson(user.addressJson, keys);
+  }
+
+  private phoneTargetFromJson(value: Prisma.JsonValue, keys: string[]) {
+    const candidate = this.firstTextForKeys(value, keys);
+    if (!candidate) {
+      return null;
+    }
+    const digits = candidate.replace(/\D/g, '');
+    return digits.length >= 10 ? candidate.trim() : null;
+  }
+
+  private firstTextForKeys(
+    value: Prisma.JsonValue,
+    keys: string[],
+    depth = 0
+  ): string | null {
+    if (!value || typeof value !== 'object' || depth > 2) {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = this.firstTextForKeys(item, keys, depth + 1);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    const raw = value as Record<string, Prisma.JsonValue>;
+    for (const key of keys) {
+      const item = raw[key];
+      if (typeof item === 'string' && item.trim().length > 0) {
+        return item;
+      }
+    }
+
+    for (const item of Object.values(raw)) {
+      const found = this.firstTextForKeys(item, keys, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  private async resolveAuthenticatedUserId(
+    userPublicId: string
+  ): Promise<bigint> {
     const user = await this.prisma.userSystem.findUnique({
       where: { publicId: userPublicId },
       select: { id: true }
@@ -1678,8 +1900,7 @@ export class CalendarService {
     return mappedItems
       .sort(
         (left, right) =>
-          left.occurrenceStartsAt.getTime() -
-          right.occurrenceStartsAt.getTime()
+          left.occurrenceStartsAt.getTime() - right.occurrenceStartsAt.getTime()
       )
       .slice(0, 100);
   }
@@ -1785,12 +2006,7 @@ export class CalendarService {
             seriesStart.getDay(),
             seriesStart
           )
-        : this.dayOfMonth(
-            year,
-            month,
-            seriesStart.getDate(),
-            seriesStart
-          );
+        : this.dayOfMonth(year, month, seriesStart.getDate(), seriesStart);
 
       if (
         candidate &&
@@ -1896,10 +2112,7 @@ export class CalendarService {
 
   private mapEntry(item: CalendarEntryWithRelations, actor: AuthTokenPayload) {
     const channels = this.channelsFromJson(item.notificationChannelsJson);
-    const person =
-      item.person ??
-      item.employmentLink?.person ??
-      null;
+    const person = item.person ?? item.employmentLink?.person ?? null;
     const providerCompany =
       item.providerCompany ??
       item.contract?.providerCompany ??
@@ -2021,14 +2234,18 @@ export class CalendarService {
     };
   }
 
-  private channelsFromJson(value: Prisma.JsonValue): CalendarNotificationChannel[] {
+  private channelsFromJson(
+    value: Prisma.JsonValue
+  ): CalendarNotificationChannel[] {
     if (!Array.isArray(value)) {
       return ['IN_APP'];
     }
     const channels = value.filter(
       (item): item is CalendarNotificationChannel =>
         typeof item === 'string' &&
-        calendarNotificationChannels.includes(item as CalendarNotificationChannel)
+        calendarNotificationChannels.includes(
+          item as CalendarNotificationChannel
+        )
     );
     return channels.length > 0 ? channels : ['IN_APP'];
   }
@@ -2044,7 +2261,9 @@ export class CalendarService {
     const raw = value as Record<string, unknown>;
     return {
       profileCodes: Array.isArray(raw.profileCodes)
-        ? raw.profileCodes.filter((item): item is string => typeof item === 'string')
+        ? raw.profileCodes.filter(
+            (item): item is string => typeof item === 'string'
+          )
         : <string[]>[],
       contractTypePublicIds: Array.isArray(raw.contractTypePublicIds)
         ? raw.contractTypePublicIds.filter(
@@ -2213,6 +2432,10 @@ export class CalendarService {
     switch (channel) {
       case 'EMAIL':
         return 'Email';
+      case 'WHATSAPP':
+        return 'WhatsApp';
+      case 'SMS':
+        return 'SMS';
       case 'PUSH':
         return 'Push';
       case 'WEBHOOK':
