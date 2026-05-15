@@ -204,7 +204,7 @@ Em AWS, `SEED_ENABLE_SAMPLE_DATA=false` deve permanecer falso.
 
 ## Pendencias reais
 
-1. Configurar dominio e HTTPS.
+1. Finalizar DNS/HTTPS na AWS e validar `https://pariflowpartners.com.br`.
 2. Criar usuarios reais, conceder perfis internos e validar login real.
 3. Fechar UX completa de refresh/logout no front e validar sessao longa em HTTPS.
 4. Evoluir calendario/comunicados com preview de audiencia e confirmacao de ciencia.

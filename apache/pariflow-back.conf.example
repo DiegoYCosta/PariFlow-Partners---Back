@@ -1,8 +1,7 @@
 <VirtualHost *:80>
   # Requer mod_proxy, mod_proxy_http, mod_headers e mod_rewrite.
-  # Troque pelo dominio quando existir. Enquanto estiver sem dominio,
-  # o IP publico da EC2 funciona como ServerName para o primeiro deploy.
-  ServerName 3.18.213.49
+  ServerName pariflowpartners.com.br
+  ServerAlias www.pariflowpartners.com.br
 
   ProxyPreserveHost On
   RequestHeader set X-Forwarded-Proto "http"

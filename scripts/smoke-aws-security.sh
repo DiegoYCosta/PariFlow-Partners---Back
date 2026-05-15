@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://3.18.213.49}"
+BASE_URL="${BASE_URL:-https://pariflowpartners.com.br}"
 EXPECT_PREVIEW_BYPASS="${EXPECT_PREVIEW_BYPASS:-false}"
 CURL_TIMEOUT="${CURL_TIMEOUT:-15}"
 
