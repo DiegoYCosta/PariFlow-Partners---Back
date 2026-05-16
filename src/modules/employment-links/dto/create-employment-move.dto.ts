@@ -33,6 +33,42 @@ export class CreateEmploymentMoveDto {
   @MaxLength(160)
   destination?: string;
 
+  @ApiPropertyOptional({
+    example: 'pos_01hpos0000000000000001',
+    description:
+      'Referencia estruturada opcional do posto de origem. Nao substitui o texto historico.'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  originPositionPublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'pos_01hpos0000000000000002',
+    description:
+      'Referencia estruturada opcional do posto de destino. Quando ausente, a timeline nao desenha conexao posicional.'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  destinationPositionPublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'ctr_01hctr0000000000000001'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  originContractPublicId?: string;
+
+  @ApiPropertyOptional({
+    example: 'ctr_01hctr0000000000000002'
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(26)
+  destinationContractPublicId?: string;
+
   @ApiProperty({
     example: '2026-05-03T08:00:00.000Z',
     description: 'Data em ISO 8601 para o historico continuar ordenavel e auditavel.'

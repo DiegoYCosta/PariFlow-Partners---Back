@@ -47,7 +47,13 @@ const timelineContractInclude = {
           person: true,
           dismissal: true,
           moves: {
-            orderBy: [{ movedAt: 'asc' }, { id: 'asc' }]
+            orderBy: [{ movedAt: 'asc' }, { id: 'asc' }],
+            include: {
+              originPosition: true,
+              destinationPosition: true,
+              originContract: true,
+              destinationContract: true
+            }
           }
         }
       }
@@ -1370,14 +1376,22 @@ export class NetworkService {
         const event = this.mapTimelineMoveEvent(link, move);
         addEvent(event);
 
-        if (event.occurredAt && this.isDateLabelWithinPeriod(event.occurredAt, period)) {
-          warnings.push({
-            code: 'employment_move_unstructured',
-            severity: 'warning',
-            entityPublicId: move.publicId,
-            message:
-              'Movimentacao possui origem/destino textual sem referencia estruturada para posto. O front pode listar o evento, mas nao deve desenhar conexao posicional.'
-          });
+        if (
+          !event.originPositionPublicId ||
+          !event.destinationPositionPublicId
+        ) {
+          if (
+            event.occurredAt &&
+            this.isDateLabelWithinPeriod(event.occurredAt, period)
+          ) {
+            warnings.push({
+              code: 'employment_move_unstructured',
+              severity: 'warning',
+              entityPublicId: move.publicId,
+              message:
+                'Movimentacao possui origem/destino textual sem referencia estruturada para posto. O front pode listar o evento, mas nao deve desenhar conexao posicional.'
+            });
+          }
         }
       }
     }
@@ -1415,11 +1429,14 @@ export class NetworkService {
       occurredAt: this.dateLabel(move.movedAt),
       personPublicId: link.person.publicId,
       employmentLinkPublicId: link.publicId,
-      originPositionPublicId: null,
-      destinationPositionPublicId: null,
+      originPositionPublicId: move.originPosition?.publicId ?? null,
+      destinationPositionPublicId: move.destinationPosition?.publicId ?? null,
       originLabel: move.origin,
       destinationLabel: move.destination,
-      label: 'Movimentacao registrada sem referencia estruturada',
+      label:
+        move.originPosition && move.destinationPosition
+          ? 'Movimentacao entre postos'
+          : 'Movimentacao registrada sem referencia estruturada',
       notes: move.notes
     };
   }

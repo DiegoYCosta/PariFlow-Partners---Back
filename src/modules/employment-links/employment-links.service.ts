@@ -20,6 +20,13 @@ import { CreateEmploymentLinkDto } from './dto/create-employment-link.dto';
 import { CreateEmploymentMoveDto } from './dto/create-employment-move.dto';
 import { ListEmploymentLinksQueryDto } from './dto/list-employment-links-query.dto';
 
+const employmentMoveInclude = {
+  originPosition: true,
+  destinationPosition: true,
+  originContract: true,
+  destinationContract: true
+} satisfies Prisma.EmploymentMoveInclude;
+
 type EmploymentLinkWithRelations = Prisma.EmploymentLinkGetPayload<{
   include: {
     person: true;
@@ -36,7 +43,9 @@ type EmploymentLinkWithRelations = Prisma.EmploymentLinkGetPayload<{
         service: true;
       };
     };
-    moves: true;
+    moves: {
+      include: typeof employmentMoveInclude;
+    };
     dismissal: true;
   };
 }>;
@@ -81,7 +90,8 @@ export class EmploymentLinksService {
               orderBy: [
                 { movedAt: 'desc' },
                 { id: 'desc' }
-              ]
+              ],
+              include: employmentMoveInclude
             },
             dismissal: true
           }
@@ -224,6 +234,8 @@ export class EmploymentLinksService {
       );
     }
 
+    const structuredRefs = await this.resolveMoveStructuredRefs(dto, actor);
+
     try {
       await this.prisma.employmentMove.create({
         data: {
@@ -232,6 +244,10 @@ export class EmploymentLinksService {
           moveType: dto.moveType,
           origin: dto.origin ?? null,
           destination: dto.destination ?? null,
+          originPositionId: structuredRefs.originPositionId,
+          destinationPositionId: structuredRefs.destinationPositionId,
+          originContractId: structuredRefs.originContractId,
+          destinationContractId: structuredRefs.destinationContractId,
           movedAt: new Date(dto.movedAt),
           notes: dto.notes ?? null
         }
@@ -310,6 +326,8 @@ export class EmploymentLinksService {
             moveType: 'DESLIGAMENTO',
             origin: link.position.name,
             destination: 'DESLIGADO',
+            originPositionId: link.positionId,
+            originContractId: link.contractId,
             movedAt: dismissedAt,
             notes: dto.reason
           }
@@ -404,6 +422,103 @@ export class EmploymentLinksService {
     };
   }
 
+  private async resolveMoveStructuredRefs(
+    dto: CreateEmploymentMoveDto,
+    actor: AuthTokenPayload
+  ) {
+    const [
+      originPosition,
+      destinationPosition,
+      explicitOriginContract,
+      explicitDestinationContract
+    ] = await Promise.all([
+      this.findScopedPosition(dto.originPositionPublicId, actor),
+      this.findScopedPosition(dto.destinationPositionPublicId, actor),
+      this.findScopedContract(dto.originContractPublicId, actor),
+      this.findScopedContract(dto.destinationContractPublicId, actor)
+    ]);
+
+    if (dto.originPositionPublicId && !originPosition) {
+      throw new BadRequestException(
+        'Posto de origem da movimentacao nao encontrado.'
+      );
+    }
+
+    if (dto.destinationPositionPublicId && !destinationPosition) {
+      throw new BadRequestException(
+        'Posto de destino da movimentacao nao encontrado.'
+      );
+    }
+
+    if (dto.originContractPublicId && !explicitOriginContract) {
+      throw new BadRequestException(
+        'Contrato de origem da movimentacao nao encontrado.'
+      );
+    }
+
+    if (dto.destinationContractPublicId && !explicitDestinationContract) {
+      throw new BadRequestException(
+        'Contrato de destino da movimentacao nao encontrado.'
+      );
+    }
+
+    if (
+      originPosition &&
+      explicitOriginContract &&
+      originPosition.contractId !== explicitOriginContract.id
+    ) {
+      throw new BadRequestException(
+        'Posto de origem nao pertence ao contrato de origem informado.'
+      );
+    }
+
+    if (
+      destinationPosition &&
+      explicitDestinationContract &&
+      destinationPosition.contractId !== explicitDestinationContract.id
+    ) {
+      throw new BadRequestException(
+        'Posto de destino nao pertence ao contrato de destino informado.'
+      );
+    }
+
+    return {
+      originPositionId: originPosition?.id,
+      destinationPositionId: destinationPosition?.id,
+      originContractId: explicitOriginContract?.id ?? originPosition?.contractId,
+      destinationContractId:
+        explicitDestinationContract?.id ?? destinationPosition?.contractId
+    };
+  }
+
+  private async findScopedPosition(
+    publicId: string | undefined,
+    actor: AuthTokenPayload
+  ) {
+    const normalized = publicId?.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return this.prisma.position.findFirst({
+      where: tenantWhere(actor, { publicId: normalized })
+    });
+  }
+
+  private async findScopedContract(
+    publicId: string | undefined,
+    actor: AuthTokenPayload
+  ) {
+    const normalized = publicId?.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return this.prisma.contract.findFirst({
+      where: tenantWhere(actor, { publicId: normalized })
+    });
+  }
+
   private async loadEmploymentLink(
     publicId: string,
     actor: AuthTokenPayload
@@ -429,7 +544,8 @@ export class EmploymentLinksService {
           orderBy: [
             { movedAt: 'desc' },
             { id: 'desc' }
-          ]
+          ],
+          include: employmentMoveInclude
         },
         dismissal: true
       }
@@ -504,6 +620,10 @@ export class EmploymentLinksService {
         moveType: move.moveType,
         origin: move.origin,
         destination: move.destination,
+        originPositionPublicId: move.originPosition?.publicId ?? null,
+        destinationPositionPublicId: move.destinationPosition?.publicId ?? null,
+        originContractPublicId: move.originContract?.publicId ?? null,
+        destinationContractPublicId: move.destinationContract?.publicId ?? null,
         movedAt: move.movedAt,
         notes: move.notes
       })),
