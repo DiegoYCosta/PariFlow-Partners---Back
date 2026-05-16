@@ -14,6 +14,9 @@ do projeto.
 3. [Client onboarding e isolamento por empresa raiz](client-onboarding-and-tenant-isolation.md)
 4. [Calendario compartilhado, banco e notificacoes](calendario-compartilhado-backend.md)
 5. [Focus Board Hub e Agenda](focus-board-hub-agenda.md)
+6. [API de entidades operacionais](operational-entities-api.md)
+7. [Network Timeline Read Model](network-timeline-read-model-plan.md)
+8. [Fixture do payload de Network Timeline](network-timeline-payload-example.json)
 
 ## Estado atual resumido
 

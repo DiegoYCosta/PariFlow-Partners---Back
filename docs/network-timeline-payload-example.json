@@ -1,0 +1,387 @@
+{
+  "data": {
+    "period": {
+      "preset": "1y",
+      "from": "2025-05-16",
+      "to": "2026-05-16"
+    },
+    "focus": {
+      "companyPublicId": "emp_01hroot0000000000000001",
+      "companyType": "provider_company",
+      "displayName": "PariFlow Services"
+    },
+    "layers": {
+      "contracts": [
+        {
+          "publicId": "ctr_01hctr0000000000000001",
+          "providerCompanyPublicId": "emp_01hroot0000000000000001",
+          "providerCompanyName": "PariFlow Services",
+          "clientCompanyPublicId": "cli_01hcli0000000000000001",
+          "clientCompanyName": "Acme Operacoes",
+          "displayName": "PariFlow Services -> Acme Operacoes",
+          "startsAt": "2025-01-01",
+          "endsAt": null,
+          "status": "active",
+          "positions": [
+            {
+              "publicId": "pos_01hpos0000000000000001",
+              "contractPublicId": "ctr_01hctr0000000000000001",
+              "displayName": "Portaria 12x36",
+              "serviceName": "Portaria",
+              "location": "Unidade Campinas",
+              "shift": "Noturno",
+              "schedule": "12x36",
+              "status": "active",
+              "startsAt": "2025-01-01",
+              "endsAt": null,
+              "dateSource": "contract",
+              "allocations": [
+                {
+                  "employmentLinkPublicId": "vin_01hvin0000000000000001",
+                  "personPublicId": "pes_01hpes0000000000000001",
+                  "personName": "Mariana Silva",
+                  "providerCompanyPublicId": "emp_01hroot0000000000000001",
+                  "contractPublicId": "ctr_01hctr0000000000000001",
+                  "positionPublicId": "pos_01hpos0000000000000001",
+                  "startsAt": "2025-02-01",
+                  "endsAt": null,
+                  "status": "active",
+                  "type": "CLT"
+                },
+                {
+                  "employmentLinkPublicId": "vin_01hvin0000000000000002",
+                  "personPublicId": "pes_01hpes0000000000000002",
+                  "personName": "Rafael Costa",
+                  "providerCompanyPublicId": "emp_01hroot0000000000000001",
+                  "contractPublicId": "ctr_01hctr0000000000000001",
+                  "positionPublicId": "pos_01hpos0000000000000001",
+                  "startsAt": "2024-01-15",
+                  "endsAt": "2025-03-20",
+                  "status": "dismissed",
+                  "type": "CLT"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "publicId": "ctr_01hctr0000000000000002",
+          "providerCompanyPublicId": "emp_01hroot0000000000000001",
+          "providerCompanyName": "PariFlow Services",
+          "clientCompanyPublicId": "cli_01hcli0000000000000002",
+          "clientCompanyName": "Beta Facilities",
+          "displayName": "PariFlow Services -> Beta Facilities",
+          "startsAt": "2023-02-01",
+          "endsAt": "2025-09-30",
+          "status": "expired",
+          "positions": [
+            {
+              "publicId": "pos_01hpos0000000000000002",
+              "contractPublicId": "ctr_01hctr0000000000000002",
+              "displayName": "Recepcao Comercial",
+              "serviceName": "Recepcao",
+              "location": "Unidade Sao Paulo",
+              "shift": "Comercial",
+              "schedule": "5x2",
+              "status": "inactive",
+              "startsAt": "2023-02-01",
+              "endsAt": "2025-09-30",
+              "dateSource": "contract",
+              "allocations": [
+                {
+                  "employmentLinkPublicId": "vin_01hvin0000000000000003",
+                  "personPublicId": "pes_01hpes0000000000000003",
+                  "personName": "Helena Rocha",
+                  "providerCompanyPublicId": "emp_01hroot0000000000000001",
+                  "contractPublicId": "ctr_01hctr0000000000000002",
+                  "positionPublicId": "pos_01hpos0000000000000002",
+                  "startsAt": "2024-04-10",
+                  "endsAt": "2025-09-30",
+                  "status": "historical",
+                  "type": "PJ"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "collaborators": [
+        {
+          "personPublicId": "pes_01hpes0000000000000001",
+          "personName": "Mariana Silva",
+          "status": "active",
+          "segments": [
+            {
+              "kind": "allocation",
+              "employmentLinkPublicId": "vin_01hvin0000000000000001",
+              "contractPublicId": "ctr_01hctr0000000000000001",
+              "positionPublicId": "pos_01hpos0000000000000001",
+              "startsAt": "2025-02-01",
+              "endsAt": null,
+              "status": "active"
+            }
+          ],
+          "events": [
+            {
+              "publicId": "evt_adm_01hvin0000000000000001",
+              "eventType": "admission",
+              "source": "employment_link",
+              "occurredAt": "2025-02-01",
+              "personPublicId": "pes_01hpes0000000000000001",
+              "employmentLinkPublicId": "vin_01hvin0000000000000001",
+              "positionPublicId": "pos_01hpos0000000000000001",
+              "label": "Admissao",
+              "notes": null
+            },
+            {
+              "publicId": "mov_01hmov0000000000000001",
+              "eventType": "move",
+              "source": "employment_move",
+              "occurredAt": "2025-08-01",
+              "personPublicId": "pes_01hpes0000000000000001",
+              "employmentLinkPublicId": "vin_01hvin0000000000000001",
+              "originPositionPublicId": null,
+              "destinationPositionPublicId": null,
+              "originLabel": "Portaria 12x36",
+              "destinationLabel": "Portaria Lider",
+              "label": "Movimentacao registrada sem referencia estruturada",
+              "notes": "Movimentacao historica possui origem/destino textual."
+            }
+          ]
+        },
+        {
+          "personPublicId": "pes_01hpes0000000000000002",
+          "personName": "Rafael Costa",
+          "status": "dismissed",
+          "segments": [
+            {
+              "kind": "allocation",
+              "employmentLinkPublicId": "vin_01hvin0000000000000002",
+              "contractPublicId": "ctr_01hctr0000000000000001",
+              "positionPublicId": "pos_01hpos0000000000000001",
+              "startsAt": "2024-01-15",
+              "endsAt": "2025-03-20",
+              "status": "dismissed"
+            }
+          ],
+          "events": [
+            {
+              "publicId": "dsl_01hdsl0000000000000001",
+              "eventType": "dismissal",
+              "source": "dismissal",
+              "occurredAt": "2025-03-20",
+              "personPublicId": "pes_01hpes0000000000000002",
+              "employmentLinkPublicId": "vin_01hvin0000000000000002",
+              "positionPublicId": "pos_01hpos0000000000000001",
+              "label": "Desligamento",
+              "notes": "Encerramento de contrato."
+            }
+          ]
+        },
+        {
+          "personPublicId": "pes_01hpes0000000000000003",
+          "personName": "Helena Rocha",
+          "status": "historical",
+          "segments": [
+            {
+              "kind": "allocation",
+              "employmentLinkPublicId": "vin_01hvin0000000000000003",
+              "contractPublicId": "ctr_01hctr0000000000000002",
+              "positionPublicId": "pos_01hpos0000000000000002",
+              "startsAt": "2024-04-10",
+              "endsAt": "2025-09-30",
+              "status": "historical"
+            }
+          ],
+          "events": []
+        }
+      ],
+      "events": [
+        {
+          "publicId": "evt_adm_01hvin0000000000000001",
+          "eventType": "admission",
+          "source": "employment_link",
+          "occurredAt": "2025-02-01",
+          "personPublicId": "pes_01hpes0000000000000001",
+          "employmentLinkPublicId": "vin_01hvin0000000000000001",
+          "positionPublicId": "pos_01hpos0000000000000001",
+          "label": "Admissao",
+          "notes": null
+        },
+        {
+          "publicId": "mov_01hmov0000000000000001",
+          "eventType": "move",
+          "source": "employment_move",
+          "occurredAt": "2025-08-01",
+          "personPublicId": "pes_01hpes0000000000000001",
+          "employmentLinkPublicId": "vin_01hvin0000000000000001",
+          "originPositionPublicId": null,
+          "destinationPositionPublicId": null,
+          "originLabel": "Portaria 12x36",
+          "destinationLabel": "Portaria Lider",
+          "label": "Movimentacao registrada sem referencia estruturada",
+          "notes": "Movimentacao historica possui origem/destino textual."
+        },
+        {
+          "publicId": "dsl_01hdsl0000000000000001",
+          "eventType": "dismissal",
+          "source": "dismissal",
+          "occurredAt": "2025-03-20",
+          "personPublicId": "pes_01hpes0000000000000002",
+          "employmentLinkPublicId": "vin_01hvin0000000000000002",
+          "positionPublicId": "pos_01hpos0000000000000001",
+          "label": "Desligamento",
+          "notes": "Encerramento de contrato."
+        },
+        {
+          "publicId": "tlr_01htlr0000000000000001",
+          "eventType": "timeline_record",
+          "source": "timeline_record",
+          "occurredAt": "2025-07-15",
+          "label": "Ajuste operacional",
+          "notes": "Registro manual vinculado ao contrato ativo.",
+          "linkedEntities": [
+            {
+              "entityType": "contract",
+              "entityPublicId": "ctr_01hctr0000000000000001",
+              "labelSnapshot": "PariFlow Services -> Acme Operacoes"
+            }
+          ]
+        }
+      ]
+    },
+    "currentSnapshot": {
+      "contracts": [
+        {
+          "publicId": "ctr_01hctr0000000000000001",
+          "displayName": "PariFlow Services -> Acme Operacoes",
+          "status": "active",
+          "activePositions": 1,
+          "activeCollaborators": 1
+        }
+      ],
+      "positions": [
+        {
+          "publicId": "pos_01hpos0000000000000001",
+          "contractPublicId": "ctr_01hctr0000000000000001",
+          "displayName": "Portaria 12x36",
+          "status": "active",
+          "activeCollaborators": 1
+        }
+      ],
+      "collaborators": [
+        {
+          "personPublicId": "pes_01hpes0000000000000001",
+          "personName": "Mariana Silva",
+          "employmentLinkPublicId": "vin_01hvin0000000000000001",
+          "contractPublicId": "ctr_01hctr0000000000000001",
+          "positionPublicId": "pos_01hpos0000000000000001",
+          "status": "active"
+        }
+      ]
+    },
+    "filters": {
+      "search": "",
+      "applied": {
+        "periodPreset": "1y",
+        "from": "2025-05-16",
+        "to": "2026-05-16",
+        "focusCompanyPublicId": "emp_01hroot0000000000000001",
+        "focusCompanyType": "provider_company",
+        "rootCompanyPublicIds": [],
+        "clientCompanyPublicIds": [],
+        "contractStatuses": [
+          "active",
+          "expired"
+        ],
+        "employeeStatuses": [
+          "active",
+          "dismissed",
+          "historical"
+        ],
+        "includeHistorical": true,
+        "includeMoves": true,
+        "includeOperationalEvents": true
+      },
+      "available": {
+        "periodPresets": [
+          "6m",
+          "1y",
+          "2y",
+          "5y",
+          "all"
+        ],
+        "rootCompanies": [
+          {
+            "publicId": "emp_01hroot0000000000000001",
+            "label": "PariFlow Services"
+          }
+        ],
+        "clientCompanies": [
+          {
+            "publicId": "cli_01hcli0000000000000001",
+            "label": "Acme Operacoes"
+          },
+          {
+            "publicId": "cli_01hcli0000000000000002",
+            "label": "Beta Facilities"
+          }
+        ],
+        "contractStatuses": [
+          "active",
+          "expired"
+        ],
+        "employeeStatuses": [
+          "active",
+          "dismissed",
+          "historical"
+        ]
+      }
+    },
+    "legend": {
+      "eventTypes": [
+        {
+          "value": "admission",
+          "label": "Admissao"
+        },
+        {
+          "value": "move",
+          "label": "Movimentacao"
+        },
+        {
+          "value": "dismissal",
+          "label": "Desligamento"
+        },
+        {
+          "value": "timeline_record",
+          "label": "Registro manual"
+        }
+      ],
+      "relationshipStates": [
+        {
+          "value": "active",
+          "label": "Ativo"
+        },
+        {
+          "value": "historical",
+          "label": "Historico"
+        },
+        {
+          "value": "incomplete",
+          "label": "Dado incompleto"
+        }
+      ]
+    },
+    "warnings": [
+      {
+        "code": "employment_move_unstructured",
+        "severity": "warning",
+        "entityPublicId": "mov_01hmov0000000000000001",
+        "message": "Movimentacao possui origem/destino textual sem referencia estruturada para posto. O front pode listar o evento, mas nao deve desenhar conexao posicional."
+      }
+    ]
+  },
+  "meta": {
+    "traceId": "req_01hnetworktimelineexample0001"
+  }
+}
