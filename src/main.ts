@@ -11,6 +11,32 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import { env } from './config/env';
 
+function normalizeOrigin(origin?: string) {
+  if (!origin) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLocalDevOrigin(origin?: string) {
+  const normalized = normalizeOrigin(origin);
+  if (!normalized) {
+    return false;
+  }
+
+  const parsed = new URL(normalized);
+  return (
+    (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+    ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)
+  );
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
@@ -34,12 +60,30 @@ async function bootstrap() {
   const productionCorsOrigins = env.CORS_ORIGINS ?? (
     env.APP_URL ? [env.APP_URL] : []
   );
+  const productionCorsOriginSet = new Set(
+    productionCorsOrigins
+      .map((origin) => normalizeOrigin(origin))
+      .filter((origin): origin is string => Boolean(origin))
+  );
   await app.register(cors as never, {
     credentials: true,
     origin:
       env.NODE_ENV === 'production'
         ? productionCorsOrigins.length > 0
-          ? productionCorsOrigins
+          ? (
+              origin: string | undefined,
+              callback: (error: Error | null, allowed: boolean) => void
+            ) => {
+              const normalizedOrigin = normalizeOrigin(origin);
+              const allowed =
+                !origin ||
+                (normalizedOrigin !== undefined &&
+                  productionCorsOriginSet.has(normalizedOrigin)) ||
+                (env.CORS_ALLOW_LOCAL_DEV_ORIGINS &&
+                  isLocalDevOrigin(origin));
+
+              callback(null, allowed);
+            }
           : false
         : true
   });

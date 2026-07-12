@@ -217,6 +217,79 @@ enum TenantRootCompanyStatus {
   UNAVAILABLE
 }
 
+enum FocusBoardNoteKind {
+  NOTE
+  TASK
+}
+
+enum FocusBoardNoteVisibility {
+  PRIVATE
+  SHARED
+}
+
+enum FocusBoardNoteStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+  TRASHED
+  DELETED
+}
+
+enum FocusBoardNotePriority {
+  LOW
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum FocusBoardParticipantType {
+  USER
+  ACCESS_PROFILE
+  SENSITIVE_AUDIENCE_GROUP
+}
+
+enum FocusBoardParticipantRole {
+  OWNER
+  EDITOR
+  VIEWER
+  ASSIGNEE
+}
+
+enum FocusBoardCompletionMode {
+  OWNER_ONLY
+  FIRST_COMPLETES_ALL
+  ALL_MUST_COMPLETE
+}
+
+enum FocusBoardContextType {
+  PERSON
+  PROVIDER_COMPANY
+  CLIENT_COMPANY
+  CONTRACT
+  EMPLOYMENT_LINK
+  POSITION
+  TIMELINE_RECORD
+  CALENDAR_ENTRY
+  OTHER
+}
+
+enum FocusBoardNoteEventType {
+  CREATED
+  UPDATED
+  VISIBILITY_CHANGED
+  PARTICIPANT_ADDED
+  PARTICIPANT_REMOVED
+  CONTEXT_CHANGED
+  COMPLETED
+  REOPENED
+  ARCHIVED
+  TRASHED
+  RESTORED
+  DELETED
+  REMINDER_LINKED
+  REMINDER_CANCELED
+}
+
 model TenantRootCompany {
   id                    BigInt                       @id @default(autoincrement())
   publicId              String                       @unique @db.VarChar(26)
@@ -259,6 +332,8 @@ model TenantRootCompany {
   nonBusinessDays       CalendarNonBusinessDay[]     @relation("CalendarNonBusinessDayTenantRootCompany")
   timelineRecords       TimelineRecord[]             @relation("TimelineRecordTenantRootCompany")
   refreshTokens         RefreshToken[]               @relation("RefreshTokenTenantRootCompany")
+  focusBoardNotes       FocusBoardNote[]             @relation("FocusBoardNoteTenantRootCompany")
+  focusBoardNoteEvents  FocusBoardNoteEvent[]        @relation("FocusBoardEventTenantRootCompany")
 
   @@index([status, createdAt])
   @@map("empresa_raiz_cliente")
@@ -368,41 +443,49 @@ model NotificationOutbox {
 }
 
 model UserSystem {
-  id                      BigInt                   @id @default(autoincrement())
-  publicId                String                   @unique @db.VarChar(26)
-  firebaseUid             String?                  @unique @db.VarChar(128)
-  tenantRootCompanyId     BigInt?
-  providerCompanyId       BigInt?
-  clientCompanyId         BigInt?
-  name                    String                   @db.VarChar(160)
-  email                   String                   @unique @db.VarChar(180)
-  addressJson             Json?
-  preferencesJson         Json?
-  status                  UserSystemStatus         @default(ACTIVE)
-  mfaEnabled              Boolean                  @default(false)
-  lastAccessAt            DateTime?
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  accessProfiles          UserAccessProfile[]
-  tenantAccesses          UserTenantAccess[]       @relation("UserTenantAccessUserSystem")
-  refreshTokens           RefreshToken[]
-  securityEvents          SecurityEvent[]
-  sensitiveAccess         SensitiveSession[]
-  auditLogs               AuditLog[]
-  createdEntityTags       EntityTag[]              @relation("EntityTagCreatedBy")
-  removedEntityTags       EntityTag[]              @relation("EntityTagRemovedBy")
-  ownedEntityTags         EntityTag[]              @relation("EntityTagOwnedBy")
-  ownedAttachments        Attachment[]             @relation("AttachmentOwnedBy")
-  createdAttachments      Attachment[]             @relation("AttachmentCreatedBy")
-  entityTagAudience       EntityTagAudienceUser[]
-  attachmentAudience      AttachmentAudienceUser[]
-  tenantRootCompany       TenantRootCompany?       @relation("UserSystemTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
-  providerCompany         ProviderCompany?         @relation("UserSystemProviderCompany", fields: [providerCompanyId], references: [id], onDelete: SetNull)
-  clientCompany           ClientCompany?           @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
-  createdCalendarEntries  CalendarEntry[]          @relation("CalendarEntryCreatedBy")
-  assignedCalendarEntries CalendarEntry[]          @relation("CalendarEntryAssignedTo")
-  updatedCalendarEntries  CalendarEntry[]          @relation("CalendarEntryUpdatedBy")
-  createdNonBusinessDays  CalendarNonBusinessDay[] @relation("CalendarNonBusinessDayCreatedBy")
+  id                              BigInt                      @id @default(autoincrement())
+  publicId                        String                      @unique @db.VarChar(26)
+  firebaseUid                     String?                     @unique @db.VarChar(128)
+  tenantRootCompanyId             BigInt?
+  providerCompanyId               BigInt?
+  clientCompanyId                 BigInt?
+  name                            String                      @db.VarChar(160)
+  email                           String                      @unique @db.VarChar(180)
+  addressJson                     Json?
+  preferencesJson                 Json?
+  status                          UserSystemStatus            @default(ACTIVE)
+  mfaEnabled                      Boolean                     @default(false)
+  lastAccessAt                    DateTime?
+  createdAt                       DateTime                    @default(now())
+  updatedAt                       DateTime                    @updatedAt
+  accessProfiles                  UserAccessProfile[]
+  tenantAccesses                  UserTenantAccess[]          @relation("UserTenantAccessUserSystem")
+  refreshTokens                   RefreshToken[]
+  securityEvents                  SecurityEvent[]
+  sensitiveAccess                 SensitiveSession[]
+  auditLogs                       AuditLog[]
+  createdEntityTags               EntityTag[]                 @relation("EntityTagCreatedBy")
+  removedEntityTags               EntityTag[]                 @relation("EntityTagRemovedBy")
+  ownedEntityTags                 EntityTag[]                 @relation("EntityTagOwnedBy")
+  ownedAttachments                Attachment[]                @relation("AttachmentOwnedBy")
+  createdAttachments              Attachment[]                @relation("AttachmentCreatedBy")
+  entityTagAudience               EntityTagAudienceUser[]
+  attachmentAudience              AttachmentAudienceUser[]
+  tenantRootCompany               TenantRootCompany?          @relation("UserSystemTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  providerCompany                 ProviderCompany?            @relation("UserSystemProviderCompany", fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  clientCompany                   ClientCompany?              @relation("UserSystemClientCompany", fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  createdCalendarEntries          CalendarEntry[]             @relation("CalendarEntryCreatedBy")
+  assignedCalendarEntries         CalendarEntry[]             @relation("CalendarEntryAssignedTo")
+  updatedCalendarEntries          CalendarEntry[]             @relation("CalendarEntryUpdatedBy")
+  createdNonBusinessDays          CalendarNonBusinessDay[]    @relation("CalendarNonBusinessDayCreatedBy")
+  createdFocusBoardNotes          FocusBoardNote[]            @relation("FocusBoardNoteCreatedBy")
+  ownedFocusBoardNotes            FocusBoardNote[]            @relation("FocusBoardNoteOwner")
+  updatedFocusBoardNotes          FocusBoardNote[]            @relation("FocusBoardNoteUpdatedBy")
+  focusBoardParticipants          FocusBoardNoteParticipant[] @relation("FocusBoardParticipantUser")
+  completedFocusBoardParticipants FocusBoardNoteParticipant[] @relation("FocusBoardParticipantCompletedBy")
+  createdFocusBoardParticipants   FocusBoardNoteParticipant[] @relation("FocusBoardParticipantCreatedBy")
+  focusBoardEvents                FocusBoardNoteEvent[]       @relation("FocusBoardEventActor")
+  createdFocusBoardReminders      FocusBoardNoteReminder[]    @relation("FocusBoardReminderCreatedBy")
 
   @@index([tenantRootCompanyId])
   @@index([providerCompanyId])
@@ -411,18 +494,19 @@ model UserSystem {
 }
 
 model AccessProfile {
-  id               BigInt              @id @default(autoincrement())
-  publicId         String              @unique @db.VarChar(26)
-  code             AccessProfileCode   @unique
-  name             String              @db.VarChar(120)
-  description      String?             @db.VarChar(255)
-  canViewSensitive Boolean             @default(false)
-  canDownload      Boolean             @default(false)
-  canSoftDelete    Boolean             @default(false)
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  users            UserAccessProfile[]
-  tenantAccesses   UserTenantAccess[]  @relation("UserTenantAccessProfile")
+  id                     BigInt                      @id @default(autoincrement())
+  publicId               String                      @unique @db.VarChar(26)
+  code                   AccessProfileCode           @unique
+  name                   String                      @db.VarChar(120)
+  description            String?                     @db.VarChar(255)
+  canViewSensitive       Boolean                     @default(false)
+  canDownload            Boolean                     @default(false)
+  canSoftDelete          Boolean                     @default(false)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  users                  UserAccessProfile[]
+  tenantAccesses         UserTenantAccess[]          @relation("UserTenantAccessProfile")
+  focusBoardParticipants FocusBoardNoteParticipant[] @relation("FocusBoardParticipantProfile")
 
   @@map("perfil_acesso")
 }
@@ -460,54 +544,56 @@ model UserTenantAccess {
 }
 
 model ProviderCompany {
-  id                  BigInt             @id @default(autoincrement())
-  publicId            String             @unique @db.VarChar(26)
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique @db.VarChar(26)
   tenantRootCompanyId BigInt?
-  legalName           String             @db.VarChar(180)
-  tradeName           String?            @db.VarChar(180)
-  document            String             @unique @db.VarChar(20)
-  status              String             @db.VarChar(30)
+  legalName           String                  @db.VarChar(180)
+  tradeName           String?                 @db.VarChar(180)
+  document            String                  @unique @db.VarChar(20)
+  status              String                  @db.VarChar(30)
   contactsJson        Json?
   addressJson         Json?
-  notes               String?            @db.Text
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  notes               String?                 @db.Text
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
   contracts           Contract[]
   links               EmploymentLink[]
   occurrences         Occurrence[]
   entityTags          EntityTag[]
-  userSystems         UserSystem[]       @relation("UserSystemProviderCompany")
+  userSystems         UserSystem[]            @relation("UserSystemProviderCompany")
   calendarEntries     CalendarEntry[]
-  tenantRootCompany   TenantRootCompany? @relation("ProviderCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts  FocusBoardNoteContext[]
+  tenantRootCompany   TenantRootCompany?      @relation("ProviderCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("empresa_prestadora")
 }
 
 model ClientCompany {
-  id                  BigInt             @id @default(autoincrement())
-  publicId            String             @unique @db.VarChar(26)
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique @db.VarChar(26)
   tenantRootCompanyId BigInt?
-  name                String             @db.VarChar(180)
-  document            String?            @db.VarChar(20)
-  clientType          String             @db.VarChar(60)
+  name                String                  @db.VarChar(180)
+  document            String?                 @db.VarChar(20)
+  clientType          String                  @db.VarChar(60)
   addressJson         Json?
-  contactName         String?            @db.VarChar(160)
-  status              String             @db.VarChar(30)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  contactName         String?                 @db.VarChar(160)
+  status              String                  @db.VarChar(30)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
   contracts           Contract[]
-  userSystems         UserSystem[]       @relation("UserSystemClientCompany")
+  userSystems         UserSystem[]            @relation("UserSystemClientCompany")
   calendarEntries     CalendarEntry[]
-  tenantRootCompany   TenantRootCompany? @relation("ClientCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts  FocusBoardNoteContext[]
+  tenantRootCompany   TenantRootCompany?      @relation("ClientCompanyTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("cliente_contratante")
 }
 
 model Contract {
-  id                         BigInt             @id @default(autoincrement())
-  publicId                   String             @unique @db.VarChar(26)
+  id                         BigInt                  @id @default(autoincrement())
+  publicId                   String                  @unique @db.VarChar(26)
   tenantRootCompanyId        BigInt?
   providerCompanyId          BigInt
   clientCompanyId            BigInt
@@ -515,21 +601,22 @@ model Contract {
   contractModelId            BigInt?
   startsAt                   DateTime
   endsAt                     DateTime?
-  status                     String             @db.VarChar(30)
-  notes                      String?            @db.Text
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
-  providerCompany            ProviderCompany    @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
-  clientCompany              ClientCompany      @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
-  contractType               ContractType?      @relation(fields: [contractTypeId], references: [id], onDelete: SetNull)
-  contractModel              ContractModel?     @relation(fields: [contractModelId], references: [id], onDelete: SetNull)
+  status                     String                  @db.VarChar(30)
+  notes                      String?                 @db.Text
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  providerCompany            ProviderCompany         @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  clientCompany              ClientCompany           @relation(fields: [clientCompanyId], references: [id], onDelete: Restrict)
+  contractType               ContractType?           @relation(fields: [contractTypeId], references: [id], onDelete: SetNull)
+  contractModel              ContractModel?          @relation(fields: [contractModelId], references: [id], onDelete: SetNull)
   documents                  ContractDocument[]
   positions                  Position[]
   links                      EmploymentLink[]
   calendarEntries            CalendarEntry[]
-  originEmploymentMoves      EmploymentMove[]   @relation("EmploymentMoveOriginContract")
-  destinationEmploymentMoves EmploymentMove[]   @relation("EmploymentMoveDestinationContract")
-  tenantRootCompany          TenantRootCompany? @relation("ContractTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts         FocusBoardNoteContext[]
+  originEmploymentMoves      EmploymentMove[]        @relation("EmploymentMoveOriginContract")
+  destinationEmploymentMoves EmploymentMove[]        @relation("EmploymentMoveDestinationContract")
+  tenantRootCompany          TenantRootCompany?      @relation("ContractTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("contrato")
@@ -600,48 +687,50 @@ model ServiceCatalog {
 }
 
 model Position {
-  id                         BigInt             @id @default(autoincrement())
-  publicId                   String             @unique @db.VarChar(26)
+  id                         BigInt                  @id @default(autoincrement())
+  publicId                   String                  @unique @db.VarChar(26)
   tenantRootCompanyId        BigInt?
   contractId                 BigInt
   serviceId                  BigInt
-  name                       String             @db.VarChar(160)
-  location                   String?            @db.VarChar(180)
-  shift                      String?            @db.VarChar(120)
-  schedule                   String?            @db.VarChar(120)
-  requirements               String?            @db.Text
-  status                     String             @db.VarChar(30)
-  contract                   Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  service                    ServiceCatalog     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  name                       String                  @db.VarChar(160)
+  location                   String?                 @db.VarChar(180)
+  shift                      String?                 @db.VarChar(120)
+  schedule                   String?                 @db.VarChar(120)
+  requirements               String?                 @db.Text
+  status                     String                  @db.VarChar(30)
+  contract                   Contract                @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  service                    ServiceCatalog          @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   links                      EmploymentLink[]
   occurrences                Occurrence[]
   calendarEntries            CalendarEntry[]
-  originEmploymentMoves      EmploymentMove[]   @relation("EmploymentMoveOriginPosition")
-  destinationEmploymentMoves EmploymentMove[]   @relation("EmploymentMoveDestinationPosition")
-  tenantRootCompany          TenantRootCompany? @relation("PositionTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts         FocusBoardNoteContext[]
+  originEmploymentMoves      EmploymentMove[]        @relation("EmploymentMoveOriginPosition")
+  destinationEmploymentMoves EmploymentMove[]        @relation("EmploymentMoveDestinationPosition")
+  tenantRootCompany          TenantRootCompany?      @relation("PositionTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("posto_ou_vaga")
 }
 
 model Person {
-  id                  BigInt             @id @default(autoincrement())
-  publicId            String             @unique @db.VarChar(26)
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique @db.VarChar(26)
   tenantRootCompanyId BigInt?
-  name                String             @db.VarChar(160)
-  cpf                 String?            @unique @db.VarChar(14)
-  rg                  String?            @db.VarChar(30)
-  email               String?            @db.VarChar(180)
-  phone               String?            @db.VarChar(30)
+  name                String                  @db.VarChar(160)
+  cpf                 String?                 @unique @db.VarChar(14)
+  rg                  String?                 @db.VarChar(30)
+  email               String?                 @db.VarChar(180)
+  phone               String?                 @db.VarChar(30)
   birthDate           DateTime?
   addressJson         Json?
-  notes               String?            @db.Text
+  notes               String?                 @db.Text
   externalWorks       ExternalWork[]
   links               EmploymentLink[]
   occurrences         Occurrence[]
   entityTags          EntityTag[]
   calendarEntries     CalendarEntry[]
-  tenantRootCompany   TenantRootCompany? @relation("PersonTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts  FocusBoardNoteContext[]
+  tenantRootCompany   TenantRootCompany?      @relation("PersonTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("pessoa")
@@ -664,26 +753,27 @@ model ExternalWork {
 }
 
 model EmploymentLink {
-  id                  BigInt               @id @default(autoincrement())
-  publicId            String               @unique @db.VarChar(26)
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique @db.VarChar(26)
   tenantRootCompanyId BigInt?
   personId            BigInt
   providerCompanyId   BigInt
   contractId          BigInt
   positionId          BigInt
-  type                String               @db.VarChar(60)
-  status              EmploymentLinkStatus @default(PENDING)
+  type                String                  @db.VarChar(60)
+  status              EmploymentLinkStatus    @default(PENDING)
   startsAt            DateTime
   endsAt              DateTime?
-  person              Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
-  providerCompany     ProviderCompany      @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
-  contract            Contract             @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  position            Position             @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  person              Person                  @relation(fields: [personId], references: [id], onDelete: Restrict)
+  providerCompany     ProviderCompany         @relation(fields: [providerCompanyId], references: [id], onDelete: Restrict)
+  contract            Contract                @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  position            Position                @relation(fields: [positionId], references: [id], onDelete: Restrict)
   moves               EmploymentMove[]
   dismissal           Dismissal?
   occurrences         Occurrence[]
   calendarEntries     CalendarEntry[]
-  tenantRootCompany   TenantRootCompany?   @relation("EmploymentLinkTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts  FocusBoardNoteContext[]
+  tenantRootCompany   TenantRootCompany?      @relation("EmploymentLinkTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
 
   @@index([tenantRootCompanyId])
   @@map("vinculo")
@@ -892,26 +982,27 @@ model DocumentReceipt {
 }
 
 model TimelineRecord {
-  id                          BigInt               @id @default(autoincrement())
-  publicId                    String               @unique @db.VarChar(26)
+  id                          BigInt                  @id @default(autoincrement())
+  publicId                    String                  @unique @db.VarChar(26)
   tenantRootCompanyId         BigInt?
-  title                       String               @db.VarChar(180)
-  description                 String               @db.Text
-  category                    String               @db.VarChar(80)
-  nature                      OccurrenceNature     @default(NEUTRAL)
+  title                       String                  @db.VarChar(180)
+  description                 String                  @db.Text
+  category                    String                  @db.VarChar(80)
+  nature                      OccurrenceNature        @default(NEUTRAL)
   referenceMonth              DateTime
   eventDate                   DateTime?
-  visibility                  OccurrenceVisibility @default(INTERNAL)
-  status                      String               @default("ACTIVE") @db.VarChar(30)
-  createdByUserSystemPublicId String?              @db.VarChar(26)
-  createdByUserSystemName     String?              @db.VarChar(160)
-  updatedByUserSystemPublicId String?              @db.VarChar(26)
-  updatedByUserSystemName     String?              @db.VarChar(160)
-  lastEditJustification       String?              @db.VarChar(180)
-  createdAt                   DateTime             @default(now())
-  updatedAt                   DateTime             @updatedAt
-  tenantRootCompany           TenantRootCompany?   @relation("TimelineRecordTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  visibility                  OccurrenceVisibility    @default(INTERNAL)
+  status                      String                  @default("ACTIVE") @db.VarChar(30)
+  createdByUserSystemPublicId String?                 @db.VarChar(26)
+  createdByUserSystemName     String?                 @db.VarChar(160)
+  updatedByUserSystemPublicId String?                 @db.VarChar(26)
+  updatedByUserSystemName     String?                 @db.VarChar(160)
+  lastEditJustification       String?                 @db.VarChar(180)
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
+  tenantRootCompany           TenantRootCompany?      @relation("TimelineRecordTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
   links                       TimelineRecordLink[]
+  focusBoardContexts          FocusBoardNoteContext[]
 
   @@index([tenantRootCompanyId, referenceMonth])
   @@index([tenantRootCompanyId, eventDate])
@@ -987,6 +1078,8 @@ model CalendarEntry {
   assignedToUserSystem           UserSystem?                @relation("CalendarEntryAssignedTo", fields: [assignedToUserSystemId], references: [id], onDelete: SetNull)
   updatedByUserSystem            UserSystem?                @relation("CalendarEntryUpdatedBy", fields: [updatedByUserSystemId], references: [id], onDelete: SetNull)
   tenantRootCompany              TenantRootCompany?         @relation("CalendarEntryTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  focusBoardContexts             FocusBoardNoteContext[]
+  focusBoardReminders            FocusBoardNoteReminder[]
 
   @@index([tenantRootCompanyId, startsAt])
   @@index([tenantRootCompanyId, appliesToRegionCode])
@@ -1029,6 +1122,162 @@ model CalendarNonBusinessDay {
   @@index([tenantRootCompanyId, regionCode, active])
   @@index([tenantRootCompanyId, stateCode, active])
   @@map("agenda_dia_nao_util")
+}
+
+model FocusBoardNote {
+  id                    BigInt                      @id @default(autoincrement())
+  publicId              String                      @unique @db.VarChar(26)
+  tenantRootCompanyId   BigInt?
+  parentNoteId          BigInt?
+  threadRootNoteId      BigInt?
+  clientMigrationId     String?                     @db.VarChar(80)
+  kind                  FocusBoardNoteKind          @default(NOTE)
+  title                 String                      @db.VarChar(180)
+  body                  String?                     @db.Text
+  status                FocusBoardNoteStatus        @default(ACTIVE)
+  previousStatus        FocusBoardNoteStatus?
+  priority              FocusBoardNotePriority      @default(NORMAL)
+  visibility            FocusBoardNoteVisibility    @default(PRIVATE)
+  completionMode        FocusBoardCompletionMode    @default(OWNER_ONLY)
+  dueAt                 DateTime?
+  completedAt           DateTime?
+  archivedAt            DateTime?
+  trashedAt             DateTime?
+  deletedAt             DateTime?
+  createdByUserSystemId BigInt?
+  ownerUserSystemId     BigInt
+  updatedByUserSystemId BigInt?
+  lastEditJustification String?                     @db.VarChar(180)
+  version               Int                         @default(1)
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  tenantRootCompany     TenantRootCompany?          @relation("FocusBoardNoteTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  parentNote            FocusBoardNote?             @relation("FocusBoardNoteReplies", fields: [parentNoteId], references: [id], onDelete: SetNull)
+  replies               FocusBoardNote[]            @relation("FocusBoardNoteReplies")
+  threadRootNote        FocusBoardNote?             @relation("FocusBoardNoteThreadRoot", fields: [threadRootNoteId], references: [id], onDelete: SetNull)
+  threadNotes           FocusBoardNote[]            @relation("FocusBoardNoteThreadRoot")
+  createdByUserSystem   UserSystem?                 @relation("FocusBoardNoteCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+  ownerUserSystem       UserSystem                  @relation("FocusBoardNoteOwner", fields: [ownerUserSystemId], references: [id], onDelete: Restrict)
+  updatedByUserSystem   UserSystem?                 @relation("FocusBoardNoteUpdatedBy", fields: [updatedByUserSystemId], references: [id], onDelete: SetNull)
+  participants          FocusBoardNoteParticipant[]
+  contexts              FocusBoardNoteContext[]
+  events                FocusBoardNoteEvent[]
+  reminders             FocusBoardNoteReminder[]
+
+  @@unique([tenantRootCompanyId, ownerUserSystemId, clientMigrationId], map: "fb_note_migration_owner_uq")
+  @@index([tenantRootCompanyId, ownerUserSystemId, status, updatedAt], map: "fb_note_owner_status_idx")
+  @@index([tenantRootCompanyId, status, dueAt], map: "fb_note_status_due_idx")
+  @@index([tenantRootCompanyId, visibility, updatedAt], map: "fb_note_visibility_idx")
+  @@index([threadRootNoteId, createdAt], map: "fb_note_thread_idx")
+  @@index([parentNoteId, createdAt], map: "fb_note_parent_idx")
+  @@map("focus_board_note")
+}
+
+model FocusBoardNoteParticipant {
+  id                      BigInt                    @id @default(autoincrement())
+  publicId                String                    @unique @db.VarChar(26)
+  noteId                  BigInt
+  participantType         FocusBoardParticipantType
+  userSystemId            BigInt?
+  accessProfileId         BigInt?
+  audienceGroupKey        SensitiveAudienceGroup?
+  role                    FocusBoardParticipantRole @default(VIEWER)
+  canComplete             Boolean                   @default(false)
+  requiredForCompletion   Boolean                   @default(false)
+  completedAt             DateTime?
+  completedByUserSystemId BigInt?
+  createdByUserSystemId   BigInt?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  note                    FocusBoardNote            @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userSystem              UserSystem?               @relation("FocusBoardParticipantUser", fields: [userSystemId], references: [id], onDelete: Cascade)
+  accessProfile           AccessProfile?            @relation("FocusBoardParticipantProfile", fields: [accessProfileId], references: [id], onDelete: Cascade)
+  completedByUserSystem   UserSystem?               @relation("FocusBoardParticipantCompletedBy", fields: [completedByUserSystemId], references: [id], onDelete: SetNull)
+  createdByUserSystem     UserSystem?               @relation("FocusBoardParticipantCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+
+  @@index([noteId, role], map: "fb_participant_note_role_idx")
+  @@index([userSystemId], map: "fb_participant_user_idx")
+  @@index([accessProfileId], map: "fb_participant_profile_idx")
+  @@index([audienceGroupKey], map: "fb_participant_group_idx")
+  @@map("focus_board_note_participant")
+}
+
+model FocusBoardNoteContext {
+  id                BigInt                @id @default(autoincrement())
+  publicId          String                @unique @db.VarChar(26)
+  noteId            BigInt
+  contextType       FocusBoardContextType
+  personId          BigInt?
+  providerCompanyId BigInt?
+  clientCompanyId   BigInt?
+  contractId        BigInt?
+  employmentLinkId  BigInt?
+  positionId        BigInt?
+  timelineRecordId  BigInt?
+  calendarEntryId   BigInt?
+  externalLabel     String?               @db.VarChar(180)
+  labelSnapshot     String                @db.VarChar(180)
+  createdAt         DateTime              @default(now())
+  note              FocusBoardNote        @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  person            Person?               @relation(fields: [personId], references: [id], onDelete: SetNull)
+  providerCompany   ProviderCompany?      @relation(fields: [providerCompanyId], references: [id], onDelete: SetNull)
+  clientCompany     ClientCompany?        @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+  contract          Contract?             @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  employmentLink    EmploymentLink?       @relation(fields: [employmentLinkId], references: [id], onDelete: SetNull)
+  position          Position?             @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  timelineRecord    TimelineRecord?       @relation(fields: [timelineRecordId], references: [id], onDelete: SetNull)
+  calendarEntry     CalendarEntry?        @relation(fields: [calendarEntryId], references: [id], onDelete: SetNull)
+
+  @@index([noteId], map: "fb_context_note_idx")
+  @@index([contextType], map: "fb_context_type_idx")
+  @@index([personId], map: "fb_context_person_idx")
+  @@index([providerCompanyId], map: "fb_context_provider_idx")
+  @@index([clientCompanyId], map: "fb_context_client_idx")
+  @@index([contractId], map: "fb_context_contract_idx")
+  @@index([employmentLinkId], map: "fb_context_link_idx")
+  @@index([positionId], map: "fb_context_position_idx")
+  @@index([timelineRecordId], map: "fb_context_timeline_idx")
+  @@index([calendarEntryId], map: "fb_context_calendar_idx")
+  @@map("focus_board_note_context")
+}
+
+model FocusBoardNoteEvent {
+  id                  BigInt                  @id @default(autoincrement())
+  publicId            String                  @unique @db.VarChar(26)
+  tenantRootCompanyId BigInt?
+  noteId              BigInt
+  actorUserSystemId   BigInt?
+  eventType           FocusBoardNoteEventType
+  summary             String                  @db.VarChar(255)
+  beforeJson          Json?
+  afterJson           Json?
+  ipAddress           String?                 @db.VarChar(64)
+  device              String?                 @db.VarChar(255)
+  createdAt           DateTime                @default(now())
+  tenantRootCompany   TenantRootCompany?      @relation("FocusBoardEventTenantRootCompany", fields: [tenantRootCompanyId], references: [id], onDelete: SetNull)
+  note                FocusBoardNote          @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  actorUserSystem     UserSystem?             @relation("FocusBoardEventActor", fields: [actorUserSystemId], references: [id], onDelete: SetNull)
+
+  @@index([tenantRootCompanyId, createdAt], map: "fb_event_tenant_created_idx")
+  @@index([noteId, createdAt], map: "fb_event_note_created_idx")
+  @@index([actorUserSystemId, createdAt], map: "fb_event_actor_created_idx")
+  @@map("focus_board_note_event")
+}
+
+model FocusBoardNoteReminder {
+  id                    BigInt         @id @default(autoincrement())
+  publicId              String         @unique @db.VarChar(26)
+  noteId                BigInt
+  calendarEntryId       BigInt
+  createdByUserSystemId BigInt?
+  createdAt             DateTime       @default(now())
+  note                  FocusBoardNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  calendarEntry         CalendarEntry  @relation(fields: [calendarEntryId], references: [id], onDelete: Cascade)
+  createdByUserSystem   UserSystem?    @relation("FocusBoardReminderCreatedBy", fields: [createdByUserSystemId], references: [id], onDelete: SetNull)
+
+  @@unique([noteId, calendarEntryId], map: "fb_reminder_note_calendar_uq")
+  @@index([calendarEntryId], map: "fb_reminder_calendar_idx")
+  @@map("focus_board_note_reminder")
 }
 
 model RefreshToken {

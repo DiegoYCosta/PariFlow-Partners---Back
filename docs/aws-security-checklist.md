@@ -33,7 +33,8 @@ Uso: validacao curta e controlada.
 Use somente depois de dominio, HTTPS e Firebase Admin configurados.
 
 - `APP_URL=https://pariflowpartners.com.br`
-- `CORS_ORIGINS=https://pariflowpartners.com.br,https://www.pariflowpartners.com.br`
+- `CORS_ORIGINS=http://pariflowpartners.com.br,https://pariflowpartners.com.br,http://www.pariflowpartners.com.br,https://www.pariflowpartners.com.br`
+- `CORS_ALLOW_LOCAL_DEV_ORIGINS=true` apenas enquanto testes locais contra a API online forem necessarios.
 - `COOKIE_SECURE=true`
 - `TRUST_PROXY=true`
 - `PREVIEW_AUTH_BYPASS=false`

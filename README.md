@@ -2,7 +2,7 @@
 
 Backend NestJS/Fastify/Prisma do PariFlow Partners.
 
-Data de referencia: `2026-05-14`.
+Data de referencia: `2026-07-09`.
 
 ## Estado atual
 
@@ -15,6 +15,7 @@ O que nao deve mais aparecer como pendencia inicial:
 - criar empresas, clientes, contratos ou catalogo contratual basico;
 - criar People/pessoas, vinculos, ocorrencias, tags ou anexos;
 - criar `GET /api/v1/network/graph`;
+- criar `GET /api/v1/network/timeline`;
 - criar dashboard operacional da home;
 - criar endpoints basicos de agenda, timeline ou relatorios;
 - habilitar mock/sample como fallback de runtime.
@@ -42,6 +43,7 @@ AWS/producao com `SWAGGER_ENABLED=false`.
 - [Client onboarding e isolamento por tenant](docs/client-onboarding-and-tenant-isolation.md)
 - [Calendario compartilhado, banco e notificacoes](docs/calendario-compartilhado-backend.md)
 - [Focus Board, hub e agenda](docs/focus-board-hub-agenda.md)
+- [Network Timeline Read Model](docs/network-timeline-read-model-plan.md)
 - [Apache reverse proxy](apache/pariflow-back.conf.example)
 
 As pastas externas `D:\DEV\flutter\JOTABE\docs - BACK` e
@@ -114,6 +116,7 @@ produto e operacao, mas os documentos essenciais tambem estao agora em
 - `GET/POST/PATCH/DELETE /api/v1/timeline`
 - `GET /api/v1/timeline/:publicId`
 - `GET /api/v1/network/graph`
+- `GET /api/v1/network/timeline`
 
 ### Agenda, relatorios e notificacoes
 

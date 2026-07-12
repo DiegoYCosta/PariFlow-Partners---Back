@@ -68,6 +68,7 @@ const environmentSchema = z.object({
     return value;
   }, z.string().url().optional()),
   CORS_ORIGINS: optionalUrlListFromEnv,
+  CORS_ALLOW_LOCAL_DEV_ORIGINS: booleanFromEnv.default(false),
   API_PREFIX: z.string().min(1).default('api/v1'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose'])

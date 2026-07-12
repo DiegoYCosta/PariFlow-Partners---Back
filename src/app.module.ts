@@ -9,6 +9,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EntityTagsModule } from './modules/entity-tags/entity-tags.module';
 import { EmploymentLinksModule } from './modules/employment-links/employment-links.module';
+import { FocusBoardModule } from './modules/focus-board/focus-board.module';
 import { HealthModule } from './modules/health/health.module';
 import { NetworkModule } from './modules/network/network.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -37,7 +38,8 @@ import { TimelineModule } from './modules/timeline/timeline.module';
     PeopleModule,
     EmploymentLinksModule,
     ReportsModule,
-    TimelineModule
+    TimelineModule,
+    FocusBoardModule
   ]
 })
 export class AppModule {}
