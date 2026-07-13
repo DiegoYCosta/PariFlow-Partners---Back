@@ -1,9 +1,9 @@
-# Busca Global - Contrato Backend Planejado
+# Busca Global - Contrato Backend
 
 Data de referencia: `2026-07-12`.
 
-Status: especificacao planejada. O header do front possui campo visual; este
-documento define o contrato necessario para torna-lo funcional.
+Status: implementado em `2026-07-13`. O header do front consome este contrato
+para consulta agrupada e navegacao direta.
 
 ## Endpoint
 
@@ -20,6 +20,10 @@ documento define o contrato necessario para torna-lo funcional.
 Nao aceitar tenant em query.
 
 ## Resposta
+
+O backend usa envelope global de sucesso `{ data, meta.traceId }`. A estrutura
+abaixo representa o payload dentro de `data`; `query` e `authorizedTotal` ficam
+em `data.meta` para preservar o contrato global ja consumido pelo front.
 
 ```json
 {
@@ -42,11 +46,14 @@ Nao aceitar tenant em query.
           }
         ]
       }
-    ]
+    ],
+    "meta": {
+      "query": "joao",
+      "authorizedTotal": 1
+    }
   },
   "meta": {
-    "query": "joao",
-    "authorizedTotal": 1
+    "traceId": "req-..."
   }
 }
 ```

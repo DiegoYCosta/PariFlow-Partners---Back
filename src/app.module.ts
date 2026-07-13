@@ -17,6 +17,7 @@ import { OccurrencesModule } from './modules/occurrences/occurrences.module';
 import { PeopleModule } from './modules/people/people.module';
 import { ProviderCompaniesModule } from './modules/provider-companies/provider-companies.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { SearchModule } from './modules/search/search.module';
 import { TimelineModule } from './modules/timeline/timeline.module';
 
 @Module({
@@ -39,7 +40,8 @@ import { TimelineModule } from './modules/timeline/timeline.module';
     EmploymentLinksModule,
     ReportsModule,
     TimelineModule,
-    FocusBoardModule
+    FocusBoardModule,
+    SearchModule
   ]
 })
 export class AppModule {}
